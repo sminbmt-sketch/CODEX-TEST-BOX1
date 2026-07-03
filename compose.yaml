@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-securewatch}
+      POSTGRES_USER: ${POSTGRES_USER:-securewatch}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-securewatch_dev_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-securewatch} -d ${POSTGRES_DB:-securewatch}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ./backend/app:/app/app
+
+  frontend:
+    build:
+      context: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/package.json:/app/package.json
+      - ./frontend/vite.config.ts:/app/vite.config.ts
+
+volumes:
+  postgres_data:
