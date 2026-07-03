@@ -50,6 +50,7 @@ cp .env.example .env
 Set these values in `.env` on the server:
 
 ```text
+CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://<server-ip>:5173
 TANIUM_BASE_URL=<internal Tanium URL>
 TANIUM_API_TOKEN=<read-only API token>
 TANIUM_VERIFY_TLS=false
