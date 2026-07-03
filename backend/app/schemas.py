@@ -54,7 +54,6 @@ class EndpointSnapshotOut(BaseModel):
     ip_address: str | None = None
     os_name: str | None = None
     os_version: str | None = None
-    software: dict | list | None = None
     last_seen_at: datetime | None = None
 
 
@@ -83,6 +82,13 @@ class CollectionResult(BaseModel):
     source: str
     fetched: int = 0
     created_or_updated: int = 0
+    errors: list[str] = Field(default_factory=list)
+
+
+class ImpactAnalysisResult(BaseModel):
+    endpoints_fetched: int = 0
+    endpoints_created_or_updated: int = 0
+    detections_created: int = 0
     errors: list[str] = Field(default_factory=list)
 
 

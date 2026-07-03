@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, AlertTriangle, DatabaseZap, ExternalLink, FileText, RefreshCw, Server, ShieldCheck, Wifi } from "lucide-react";
-import { api, type Article, type DashboardSummary, type TaniumStatus, type Vulnerability } from "./lib/api";
+import { Activity, AlertTriangle, DatabaseZap, ExternalLink, FileText, Radar, RefreshCw, Server, ShieldCheck, Wifi } from "lucide-react";
+import { api, type Article, type DashboardSummary, type Detection, type TaniumStatus, type Vulnerability } from "./lib/api";
 import { MetricCard } from "./components/MetricCard";
 
 type LoadState = {
   summary?: DashboardSummary;
   vulnerabilities: Vulnerability[];
   articles: Article[];
+  detections: Detection[];
   tanium?: TaniumStatus;
   loading: boolean;
   error?: string;
@@ -16,6 +17,7 @@ type LoadState = {
 const emptyState: LoadState = {
   vulnerabilities: [],
   articles: [],
+  detections: [],
   loading: true,
 };
 
@@ -38,13 +40,14 @@ export default function App() {
   async function load() {
     setState((current) => ({ ...current, loading: true, error: undefined }));
     try {
-      const [summary, vulnerabilities, articles, tanium] = await Promise.all([
+      const [summary, vulnerabilities, articles, tanium, detections] = await Promise.all([
         api.summary(),
         api.vulnerabilities(),
         api.articles(),
         api.taniumStatus(),
+        api.detections(),
       ]);
-      setState({ summary, vulnerabilities, articles, tanium, loading: false });
+      setState({ summary, vulnerabilities, articles, tanium, detections, loading: false });
     } catch (error) {
       setState((current) => ({
         ...current,
@@ -116,6 +119,14 @@ export default function App() {
         <button title="Collect security news" onClick={() => void runAction("News", api.collectNews)} disabled={Boolean(state.action)}>
           <FileText size={16} />
           <span>News</span>
+        </button>
+        <button title="Sync Tanium endpoint inventory" onClick={() => void runAction("Endpoint sync", api.taniumSyncEndpoints)} disabled={Boolean(state.action)}>
+          <Server size={16} />
+          <span>Endpoints</span>
+        </button>
+        <button title="Analyze CVE impact against Tanium inventory" onClick={() => void runAction("Impact analysis", api.taniumAnalyzeImpact)} disabled={Boolean(state.action)}>
+          <Radar size={16} />
+          <span>Analyze</span>
         </button>
       </section>
 
@@ -216,6 +227,29 @@ export default function App() {
             <Wifi size={16} />
             <span>Test Gateway</span>
           </button>
+        </div>
+
+        <div className="panel">
+          <div className="panel-header">
+            <h2>Impact Detections</h2>
+          </div>
+          <div className="detection-list">
+            {state.detections.map((detection) => (
+              <article key={detection.id} className="detection-item">
+                <div>
+                  <strong>{detection.vulnerability.cve_id}</strong>
+                  <span className={severityClass(detection.vulnerability.cvss_severity)}>
+                    {detection.vulnerability.cvss_severity || "match"}
+                  </span>
+                </div>
+                <p>{detection.endpoint.hostname || detection.endpoint.tanium_endpoint_id || "Unknown endpoint"}</p>
+                <span>
+                  {detection.endpoint.ip_address || "-"} · {detection.endpoint.os_name || "-"} · {Math.round(detection.confidence * 100)}%
+                </span>
+              </article>
+            ))}
+            {!state.detections.length && <div className="empty block">No impact detections</div>}
+          </div>
         </div>
       </section>
     </main>

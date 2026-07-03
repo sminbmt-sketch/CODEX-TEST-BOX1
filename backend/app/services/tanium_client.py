@@ -72,3 +72,32 @@ class TaniumGatewayClient:
             """,
             {"first": first},
         )
+
+    async def get_endpoint_inventory(self, first: int = 50) -> dict[str, Any]:
+        first = max(1, min(first, 500))
+        return await self.execute_read_only(
+            """
+            query SecureWatchEndpointInventory($first: Int!) {
+              endpoints(first: $first) {
+                edges {
+                  node {
+                    id
+                    name
+                    ipAddress
+                    eidLastSeen
+                    os {
+                      name
+                      generation
+                      platform
+                    }
+                    installedApplications {
+                      name
+                      version
+                    }
+                  }
+                }
+              }
+            }
+            """,
+            {"first": first},
+        )

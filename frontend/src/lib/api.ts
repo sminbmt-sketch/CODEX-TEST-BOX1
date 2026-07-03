@@ -48,6 +48,26 @@ export type DashboardSummary = {
   latest_articles: Article[];
 };
 
+export type EndpointSnapshot = {
+  id: number;
+  tanium_endpoint_id?: string | null;
+  hostname?: string | null;
+  ip_address?: string | null;
+  os_name?: string | null;
+  os_version?: string | null;
+  software?: unknown;
+  last_seen_at?: string | null;
+};
+
+export type Detection = {
+  id: number;
+  match_reason: string;
+  confidence: number;
+  status: string;
+  vulnerability: Vulnerability;
+  endpoint: EndpointSnapshot;
+};
+
 export type TaniumStatus = {
   configured: boolean;
   gateway_url?: string | null;
@@ -75,6 +95,9 @@ export const api = {
   articles: () => request<Article[]>("/api/articles?limit=25"),
   taniumStatus: () => request<TaniumStatus>("/api/tanium/status"),
   taniumTest: () => request<Record<string, unknown>>("/api/tanium/test", { method: "POST" }),
+  taniumSyncEndpoints: () => request<Record<string, unknown>>("/api/tanium/sync-endpoints", { method: "POST" }),
+  taniumAnalyzeImpact: () => request<Record<string, unknown>>("/api/tanium/analyze-impact", { method: "POST" }),
+  detections: () => request<Detection[]>("/api/tanium/detections?limit=25"),
   collectNvd: () => request("/api/collect/nvd", { method: "POST" }),
   collectCisaKev: () => request("/api/collect/cisa-kev", { method: "POST" }),
   collectEpss: () => request("/api/collect/epss", { method: "POST" }),

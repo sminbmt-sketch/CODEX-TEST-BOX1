@@ -294,6 +294,39 @@ td a {
   font-size: 12px;
 }
 
+.detection-list {
+  display: grid;
+}
+
+.detection-item {
+  display: grid;
+  gap: 6px;
+  border-bottom: 1px solid #edf1f4;
+  padding: 14px 16px;
+}
+
+.detection-item div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.detection-item strong {
+  font-size: 14px;
+}
+
+.detection-item p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.detection-item span {
+  color: #65717c;
+  font-size: 12px;
+}
+
 .status-list {
   display: grid;
   gap: 12px;
