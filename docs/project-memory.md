@@ -72,3 +72,4 @@ Build a Web + Dashboard system that collects security news and vulnerability dat
 
 - 2026-07-03: Initial MVP scope, implementation order, environment assessment, and Tanium safety rules recorded.
 - 2026-07-03: Created Phase 1 project skeleton with FastAPI backend, React dashboard, Docker Compose, PostgreSQL/pgvector setup, collector service stubs, LLM summary adapter, and read-only Tanium Gateway client.
+- 2026-07-03: Fixed NVD reference parsing for NVD 2.0 list-shaped `references`. Added optional `BACKEND_DNS` startup override for Podman environments where container DNS fails.

@@ -31,6 +31,14 @@ sudo ufw enable
 
 Production should put HTTPS reverse proxy in front and avoid exposing PostgreSQL externally.
 
+When using Podman Docker emulation with UFW, published container ports may require routed traffic rules:
+
+```bash
+sudo ufw route allow proto tcp from any to 10.89.0.0/24 port 8000
+sudo ufw route allow proto tcp from any to 10.89.0.0/24 port 5173
+sudo ufw allow from 10.89.0.0/24 to any port 5432 proto tcp
+```
+
 ## Project Setup
 
 ```bash
@@ -47,6 +55,15 @@ TANIUM_API_TOKEN=<read-only API token>
 TANIUM_VERIFY_TLS=false
 NVD_API_KEY=<optional but recommended>
 ```
+
+If the server uses Podman Docker emulation and containers cannot resolve service names or external domains, set:
+
+```text
+DATABASE_URL=postgresql+psycopg://securewatch:securewatch_dev_password@10.89.0.1:5432/securewatch
+BACKEND_DNS=<server DNS resolver, for example 10.10.10.11>
+```
+
+This is a Podman workaround. With Docker Engine, the default `postgres` service hostname should work.
 
 ## Start
 
