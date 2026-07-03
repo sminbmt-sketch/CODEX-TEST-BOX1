@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity, AlertTriangle, DatabaseZap, ExternalLink, FileText, Radar, RefreshCw, Server, ShieldCheck, Wifi } from "lucide-react";
-import { api, type Article, type DashboardSummary, type Detection, type TaniumStatus, type Vulnerability } from "./lib/api";
+import { api, type Article, type DashboardSummary, type Detection, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
 import { MetricCard } from "./components/MetricCard";
 
 type LoadState = {
@@ -8,6 +8,7 @@ type LoadState = {
   vulnerabilities: Vulnerability[];
   articles: Article[];
   detections: Detection[];
+  trends?: TrendReport;
   tanium?: TaniumStatus;
   loading: boolean;
   error?: string;
@@ -40,14 +41,15 @@ export default function App() {
   async function load() {
     setState((current) => ({ ...current, loading: true, error: undefined }));
     try {
-      const [summary, vulnerabilities, articles, tanium, detections] = await Promise.all([
+      const [summary, vulnerabilities, articles, tanium, detections, trends] = await Promise.all([
         api.summary(),
         api.vulnerabilities(),
         api.articles(),
         api.taniumStatus(),
         api.detections(),
+        api.trends(),
       ]);
-      setState({ summary, vulnerabilities, articles, tanium, detections, loading: false });
+      setState({ summary, vulnerabilities, articles, tanium, detections, trends, loading: false });
     } catch (error) {
       setState((current) => ({
         ...current,
@@ -120,6 +122,10 @@ export default function App() {
           <FileText size={16} />
           <span>News</span>
         </button>
+        <button title="Generate issue summaries" onClick={() => void runAction("Summaries", api.summarizeArticles)} disabled={Boolean(state.action)}>
+          <FileText size={16} />
+          <span>Summaries</span>
+        </button>
         <button title="Sync Tanium endpoint inventory" onClick={() => void runAction("Endpoint sync", api.taniumSyncEndpoints)} disabled={Boolean(state.action)}>
           <Server size={16} />
           <span>Endpoints</span>
@@ -140,6 +146,50 @@ export default function App() {
       </section>
 
       <section className="content-grid">
+        <div className="panel full-width">
+          <div className="panel-header">
+            <h2>Trend Brief</h2>
+          </div>
+          <div className="trend-brief">
+            <div className="theme-list">
+              {(state.trends?.themes || []).map((theme) => (
+                <p key={theme}>{theme}</p>
+              ))}
+              {!state.trends?.themes.length && <div className="empty block">No trend summary</div>}
+            </div>
+            <div className="brief-grid">
+              <div>
+                <h3>News Signals</h3>
+                {(state.trends?.news || []).slice(0, 4).map((item) => (
+                  <article key={item.url} className="brief-item">
+                    <a href={item.url} target="_blank" rel="noreferrer">
+                      {item.title}
+                      <ExternalLink size={13} />
+                    </a>
+                    <p>{item.summary}</p>
+                  </article>
+                ))}
+              </div>
+              <div>
+                <h3>Priority CVEs</h3>
+                {(state.trends?.vulnerabilities || []).slice(0, 4).map((item) => (
+                  <article key={item.cve_id} className="brief-item">
+                    {item.url ? (
+                      <a href={item.url} target="_blank" rel="noreferrer">
+                        {item.cve_id}
+                        <ExternalLink size={13} />
+                      </a>
+                    ) : (
+                      <strong>{item.cve_id}</strong>
+                    )}
+                    <p>{item.summary}</p>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="panel wide">
           <div className="panel-header">
             <h2>High Priority Vulnerabilities</h2>

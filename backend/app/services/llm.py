@@ -1,6 +1,9 @@
 import httpx
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
+from app.db.models import Article, Vulnerability
 
 
 class SummaryService:
@@ -38,3 +41,105 @@ class SummaryService:
             response.raise_for_status()
             data = response.json()
             return data["choices"][0]["message"]["content"]
+
+
+def _compact(value: str | None, limit: int = 700) -> str:
+    if not value:
+        return ""
+    text = " ".join(value.split())
+    return text[:limit]
+
+
+def _fallback_article_summary(article: Article) -> str:
+    source_name = article.source.name if article.source else "수집원"
+    excerpt = _compact(article.raw_excerpt, 450)
+    if excerpt:
+        return f"{source_name}에서 수집된 보안 이슈입니다. 핵심 제목은 '{article.title}'이며, 원문 요약 근거는 다음과 같습니다: {excerpt}"
+    return f"{source_name}에서 수집된 보안 이슈입니다. 현재 확보된 근거는 제목과 원문 링크이며, 상세 판단은 원문 확인이 필요합니다."
+
+
+def _fallback_vulnerability_summary(vulnerability: Vulnerability) -> str:
+    parts = [f"{vulnerability.cve_id}는"]
+    if vulnerability.vendor or vulnerability.product:
+        parts.append(f"{' / '.join(value for value in (vulnerability.vendor, vulnerability.product) if value)} 관련 취약점입니다.")
+    else:
+        parts.append("제품 식별 정보가 제한적인 취약점입니다.")
+    if vulnerability.cvss_severity or vulnerability.cvss_score:
+        parts.append(f"CVSS는 {vulnerability.cvss_severity or '-'} {vulnerability.cvss_score or '-'}입니다.")
+    if vulnerability.epss_score is not None:
+        parts.append(f"EPSS는 {round(vulnerability.epss_score * 100, 2)}%입니다.")
+    if vulnerability.kev:
+        parts.append("CISA KEV에 포함되어 실제 악용 이력이 있는 항목으로 우선 확인이 필요합니다.")
+    if vulnerability.description:
+        parts.append(f"설명: {_compact(vulnerability.description, 450)}")
+    return " ".join(parts)
+
+
+async def summarize_recent_articles(db: Session, limit: int = 20) -> tuple[int, int]:
+    rows = db.scalars(
+        select(Article)
+        .options(selectinload(Article.source))
+        .order_by(Article.published_at.desc().nullslast(), Article.created_at.desc())
+        .limit(limit)
+    ).all()
+    changed = 0
+    service = SummaryService()
+    for article in rows:
+        body = article.raw_excerpt or article.title
+        summary = None
+        if settings.llm_provider != "disabled":
+            summary = await service.summarize(article.title, body, [article.url])
+        article.summary = summary or _fallback_article_summary(article)
+        changed += 1
+    db.commit()
+    return len(rows), changed
+
+
+def build_trend_report(db: Session, limit: int = 10) -> dict:
+    articles = db.scalars(
+        select(Article)
+        .options(selectinload(Article.source))
+        .order_by(Article.published_at.desc().nullslast(), Article.created_at.desc())
+        .limit(limit)
+    ).all()
+    vulnerabilities = db.scalars(
+        select(Vulnerability)
+        .order_by(Vulnerability.kev.desc(), Vulnerability.cvss_score.desc().nullslast(), Vulnerability.epss_score.desc().nullslast())
+        .limit(limit)
+    ).all()
+
+    news_items = [
+        {
+            "title": article.title,
+            "summary": article.summary or _fallback_article_summary(article),
+            "source": article.source.name if article.source else None,
+            "url": article.url,
+            "published_at": article.published_at,
+        }
+        for article in articles
+    ]
+    vulnerability_items = [
+        {
+            "title": vulnerability.title or vulnerability.cve_id,
+            "summary": _fallback_vulnerability_summary(vulnerability),
+            "cve_id": vulnerability.cve_id,
+            "url": vulnerability.source_url,
+            "kev": vulnerability.kev,
+            "cvss_score": vulnerability.cvss_score,
+            "epss_score": vulnerability.epss_score,
+        }
+        for vulnerability in vulnerabilities
+    ]
+    themes = []
+    if any(item["kev"] for item in vulnerability_items):
+        themes.append("CISA KEV 기반으로 실제 악용 이력이 있는 취약점 우선 점검이 필요합니다.")
+    if news_items:
+        themes.append("최근 보안 뉴스와 취약점 공지의 원문 링크를 함께 확인해야 합니다.")
+    if vulnerability_items:
+        themes.append("Tanium 영향 분석 결과와 CVE 우선순위를 함께 보며 패치 대상을 좁히는 단계입니다.")
+
+    return {
+        "themes": themes,
+        "news": news_items,
+        "vulnerabilities": vulnerability_items,
+    }

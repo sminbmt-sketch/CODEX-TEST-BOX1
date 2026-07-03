@@ -68,6 +68,26 @@ export type Detection = {
   endpoint: EndpointSnapshot;
 };
 
+export type TrendReport = {
+  themes: string[];
+  news: {
+    title: string;
+    summary: string;
+    source?: string | null;
+    url: string;
+    published_at?: string | null;
+  }[];
+  vulnerabilities: {
+    title: string;
+    summary: string;
+    cve_id: string;
+    url?: string | null;
+    kev: boolean;
+    cvss_score?: number | null;
+    epss_score?: number | null;
+  }[];
+};
+
 export type TaniumStatus = {
   configured: boolean;
   gateway_url?: string | null;
@@ -98,6 +118,8 @@ export const api = {
   taniumSyncEndpoints: () => request<Record<string, unknown>>("/api/tanium/sync-endpoints", { method: "POST" }),
   taniumAnalyzeImpact: () => request<Record<string, unknown>>("/api/tanium/analyze-impact", { method: "POST" }),
   detections: () => request<Detection[]>("/api/tanium/detections?limit=25"),
+  trends: () => request<TrendReport>("/api/summaries/trends?limit=8"),
+  summarizeArticles: () => request<Record<string, unknown>>("/api/summaries/articles?limit=20", { method: "POST" }),
   collectNvd: () => request("/api/collect/nvd", { method: "POST" }),
   collectCisaKev: () => request("/api/collect/cisa-kev", { method: "POST" }),
   collectEpss: () => request("/api/collect/epss", { method: "POST" }),

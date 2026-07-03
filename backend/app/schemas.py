@@ -92,6 +92,37 @@ class ImpactAnalysisResult(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class SummaryRunResult(BaseModel):
+    target: str
+    fetched: int = 0
+    summarized: int = 0
+    errors: list[str] = Field(default_factory=list)
+
+
+class TrendNewsItem(BaseModel):
+    title: str
+    summary: str
+    source: str | None = None
+    url: str
+    published_at: datetime | None = None
+
+
+class TrendVulnerabilityItem(BaseModel):
+    title: str
+    summary: str
+    cve_id: str
+    url: str | None = None
+    kev: bool = False
+    cvss_score: float | None = None
+    epss_score: float | None = None
+
+
+class TrendReport(BaseModel):
+    themes: list[str]
+    news: list[TrendNewsItem]
+    vulnerabilities: list[TrendVulnerabilityItem]
+
+
 class TaniumStatus(BaseModel):
     configured: bool
     gateway_url: str | None = None

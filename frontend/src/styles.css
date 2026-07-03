@@ -191,6 +191,10 @@ button:disabled {
   grid-row: span 2;
 }
 
+.panel.full-width {
+  grid-column: 1 / -1;
+}
+
 .panel-header {
   display: flex;
   align-items: center;
@@ -294,6 +298,57 @@ td a {
   font-size: 12px;
 }
 
+.trend-brief {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+}
+
+.theme-list {
+  display: grid;
+  gap: 8px;
+}
+
+.theme-list p {
+  margin: 0;
+  border-left: 3px solid #0f6b79;
+  padding-left: 10px;
+  color: #2a3742;
+  font-size: 14px;
+}
+
+.brief-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.brief-grid h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.brief-item {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid #edf1f4;
+  padding: 12px 0;
+}
+
+.brief-item a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 680;
+}
+
+.brief-item p {
+  margin: 0;
+  color: #53606b;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .detection-list {
   display: grid;
 }
@@ -376,6 +431,10 @@ td a {
 
   .panel.wide {
     grid-row: auto;
+  }
+
+  .brief-grid {
+    grid-template-columns: 1fr;
   }
 }
 
