@@ -33,6 +33,7 @@ class VulnerabilityOut(BaseModel):
     cve_id: str
     title: str | None = None
     description: str | None = None
+    summary: str | None = None
     cvss_score: float | None = None
     cvss_severity: str | None = None
     epss_score: float | None = None

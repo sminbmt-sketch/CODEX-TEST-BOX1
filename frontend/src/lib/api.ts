@@ -28,6 +28,7 @@ export type Vulnerability = {
   cve_id: string;
   title?: string | null;
   description?: string | null;
+  summary?: string | null;
   cvss_score?: number | null;
   cvss_severity?: string | null;
   epss_score?: number | null;
@@ -120,6 +121,8 @@ export const api = {
   detections: () => request<Detection[]>("/api/tanium/detections?limit=25"),
   trends: () => request<TrendReport>("/api/summaries/trends?limit=8"),
   summarizeArticles: () => request<Record<string, unknown>>("/api/summaries/articles?limit=20", { method: "POST" }),
+  summarizeVulnerabilities: () => request<Record<string, unknown>>("/api/summaries/vulnerabilities?limit=20", { method: "POST" }),
+  summarizeAll: () => request<Record<string, unknown>[]>("/api/summaries/all?limit=2", { method: "POST" }),
   collectNvd: () => request("/api/collect/nvd", { method: "POST" }),
   collectCisaKev: () => request("/api/collect/cisa-kev", { method: "POST" }),
   collectEpss: () => request("/api/collect/epss", { method: "POST" }),

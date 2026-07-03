@@ -49,6 +49,7 @@ class Vulnerability(Base):
     cve_id: Mapped[str] = mapped_column(String(32), unique=True, index=True)
     title: Mapped[str | None] = mapped_column(Text)
     description: Mapped[str | None] = mapped_column(Text)
+    summary: Mapped[str | None] = mapped_column(Text)
     cvss_score: Mapped[float | None] = mapped_column(Float, index=True)
     cvss_severity: Mapped[str | None] = mapped_column(String(32), index=True)
     epss_score: Mapped[float | None] = mapped_column(Float, index=True)

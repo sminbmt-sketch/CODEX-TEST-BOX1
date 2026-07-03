@@ -122,7 +122,7 @@ export default function App() {
           <FileText size={16} />
           <span>News</span>
         </button>
-        <button title="Generate issue summaries" onClick={() => void runAction("Summaries", api.summarizeArticles)} disabled={Boolean(state.action)}>
+        <button title="Generate Korean news and CVE summaries" onClick={() => void runAction("Summaries", api.summarizeAll)} disabled={Boolean(state.action)}>
           <FileText size={16} />
           <span>Summaries</span>
         </button>
@@ -203,6 +203,7 @@ export default function App() {
                   <th>CVSS</th>
                   <th>EPSS</th>
                   <th>Vendor</th>
+                  <th>Summary</th>
                   <th>Published</th>
                 </tr>
               </thead>
@@ -226,12 +227,13 @@ export default function App() {
                     <td>{item.cvss_score ?? "-"}</td>
                     <td>{item.epss_score != null ? `${Math.round(item.epss_score * 1000) / 10}%` : "-"}</td>
                     <td>{[item.vendor, item.product].filter(Boolean).join(" / ") || "-"}</td>
+                    <td className="summary-cell">{item.summary || item.description || "-"}</td>
                     <td>{formatDate(item.published_at)}</td>
                   </tr>
                 ))}
                 {!state.vulnerabilities.length && (
                   <tr>
-                    <td colSpan={6} className="empty">
+                    <td colSpan={7} className="empty">
                       No vulnerability data
                     </td>
                   </tr>
@@ -253,6 +255,7 @@ export default function App() {
                   <ExternalLink size={13} />
                 </a>
                 <span>{article.source?.name || "Source"} · {formatDate(article.published_at)}</span>
+                {article.summary && <p>{article.summary}</p>}
               </article>
             ))}
             {!state.articles.length && <div className="empty block">No news data</div>}

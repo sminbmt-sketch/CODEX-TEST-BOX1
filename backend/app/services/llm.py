@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.db.models import Article, Vulnerability
 
 THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
+HANGUL_RE = re.compile(r"[가-힣]")
 
 
 class SummaryService:
@@ -54,6 +55,24 @@ class SummaryService:
             return THINK_BLOCK_RE.sub("", content).strip()
 
 
+def _vulnerability_body(vulnerability: Vulnerability) -> str:
+    parts = [
+        f"CVE: {vulnerability.cve_id}",
+        f"Title: {vulnerability.title or vulnerability.cve_id}",
+    ]
+    if vulnerability.description:
+        parts.append(f"Description: {vulnerability.description}")
+    if vulnerability.vendor or vulnerability.product:
+        parts.append(f"Product: {' / '.join(value for value in (vulnerability.vendor, vulnerability.product) if value)}")
+    if vulnerability.cvss_severity or vulnerability.cvss_score:
+        parts.append(f"CVSS: {vulnerability.cvss_severity or '-'} {vulnerability.cvss_score or '-'}")
+    if vulnerability.epss_score is not None:
+        parts.append(f"EPSS: {round(vulnerability.epss_score * 100, 2)}%")
+    if vulnerability.kev:
+        parts.append("CISA KEV: known exploited vulnerability")
+    return "\n".join(parts)
+
+
 def _compact(value: str | None, limit: int = 700) -> str:
     if not value:
         return ""
@@ -61,11 +80,19 @@ def _compact(value: str | None, limit: int = 700) -> str:
     return text[:limit]
 
 
+def _has_korean_text(value: str | None) -> bool:
+    if not value:
+        return False
+    return len(HANGUL_RE.findall(value)) >= 12
+
+
 def _fallback_article_summary(article: Article) -> str:
     source_name = article.source.name if article.source else "수집원"
     excerpt = _compact(article.raw_excerpt, 450)
-    if excerpt:
+    if excerpt and _has_korean_text(excerpt):
         return f"{source_name}에서 수집된 보안 이슈입니다. 핵심 제목은 '{article.title}'이며, 원문 요약 근거는 다음과 같습니다: {excerpt}"
+    if excerpt:
+        return f"{source_name}에서 수집된 영문 보안 이슈입니다. 핵심 제목은 '{article.title}'이며, 상세 내용은 원문 링크 확인이 필요합니다."
     return f"{source_name}에서 수집된 보안 이슈입니다. 현재 확보된 근거는 제목과 원문 링크이며, 상세 판단은 원문 확인이 필요합니다."
 
 
@@ -81,9 +108,23 @@ def _fallback_vulnerability_summary(vulnerability: Vulnerability) -> str:
         parts.append(f"EPSS는 {round(vulnerability.epss_score * 100, 2)}%입니다.")
     if vulnerability.kev:
         parts.append("CISA KEV에 포함되어 실제 악용 이력이 있는 항목으로 우선 확인이 필요합니다.")
-    if vulnerability.description:
+    if vulnerability.description and _has_korean_text(vulnerability.description):
         parts.append(f"설명: {_compact(vulnerability.description, 450)}")
+    elif vulnerability.description:
+        parts.append("영문 원문 설명이 제공된 항목으로, 상세 영향은 원문 링크 확인이 필요합니다.")
     return " ".join(parts)
+
+
+def _usable_summary(summary: str | None, required_terms: list[str] | None = None) -> str | None:
+    if not summary:
+        return None
+    cleaned = summary.strip()
+    if not _has_korean_text(cleaned):
+        return None
+    lowered = cleaned.lower()
+    if required_terms and not any(term.lower() in lowered for term in required_terms):
+        return None
+    return cleaned
 
 
 async def summarize_recent_articles(db: Session, limit: int = 20) -> tuple[int, int]:
@@ -103,7 +144,35 @@ async def summarize_recent_articles(db: Session, limit: int = 20) -> tuple[int, 
                 summary = await service.summarize(article.title, body, [article.url])
             except Exception:
                 summary = None
-        article.summary = summary or _fallback_article_summary(article)
+        article.summary = _usable_summary(summary) or _fallback_article_summary(article)
+        changed += 1
+    db.commit()
+    return len(rows), changed
+
+
+async def summarize_recent_vulnerabilities(db: Session, limit: int = 20) -> tuple[int, int]:
+    rows = db.scalars(
+        select(Vulnerability)
+        .order_by(Vulnerability.kev.desc(), Vulnerability.cvss_score.desc().nullslast(), Vulnerability.epss_score.desc().nullslast())
+        .limit(limit)
+    ).all()
+    changed = 0
+    service = SummaryService()
+    for vulnerability in rows:
+        summary = None
+        if settings.llm_provider != "disabled":
+            try:
+                summary = await service.summarize(
+                    vulnerability.title or vulnerability.cve_id,
+                    _vulnerability_body(vulnerability),
+                    [vulnerability.source_url] if vulnerability.source_url else [],
+                )
+            except Exception:
+                summary = None
+        required_terms = [vulnerability.cve_id]
+        if vulnerability.product:
+            required_terms.append(vulnerability.product)
+        vulnerability.summary = _usable_summary(summary, required_terms=required_terms) or _fallback_vulnerability_summary(vulnerability)
         changed += 1
     db.commit()
     return len(rows), changed
@@ -135,7 +204,7 @@ def build_trend_report(db: Session, limit: int = 10) -> dict:
     vulnerability_items = [
         {
             "title": vulnerability.title or vulnerability.cve_id,
-            "summary": _fallback_vulnerability_summary(vulnerability),
+            "summary": vulnerability.summary or _fallback_vulnerability_summary(vulnerability),
             "cve_id": vulnerability.cve_id,
             "url": vulnerability.source_url,
             "kev": vulnerability.kev,

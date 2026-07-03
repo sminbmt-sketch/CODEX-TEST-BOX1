@@ -240,6 +240,15 @@ td a {
   font-weight: 680;
 }
 
+.summary-cell {
+  min-width: 280px;
+  max-width: 480px;
+  color: #53606b;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: normal;
+}
+
 .severity,
 .kev {
   display: inline-flex;
@@ -296,6 +305,13 @@ td a {
 .news-item span {
   color: #65717c;
   font-size: 12px;
+}
+
+.news-item p {
+  margin: 0;
+  color: #53606b;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .trend-brief {
