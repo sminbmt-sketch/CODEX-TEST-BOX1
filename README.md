@@ -6,6 +6,7 @@ Security trend dashboard and Tanium read-only impact analysis MVP.
 
 - Web dashboard for security news, recent CVEs, risk priority, and source links.
 - Collectors for NVD, CISA KEV, FIRST EPSS, and RSS-style news sources.
+- News/advisory inputs include CISA, The Hacker News, BleepingComputer, Boannews, KISA/KrCERT, and Krebs on Security.
 - LLM-ready summary layer with source references.
 - Tanium Gateway read-only integration for endpoint impact analysis.
 - No endpoint control in Phase 1.
