@@ -26,8 +26,10 @@ class Settings(BaseSettings):
 
     llm_provider: str = "disabled"
     llm_base_url: str = "http://localhost:11434/v1"
-    llm_model: str = "qwen3:8b"
+    llm_model: str = "qwen2.5:1.5b"
     llm_api_key: str | None = None
+    llm_timeout_seconds: int = Field(default=180, ge=30, le=600)
+    llm_max_tokens: int = Field(default=512, ge=64, le=4096)
 
     @cached_property
     def cors_origin_list(self) -> list[str]:

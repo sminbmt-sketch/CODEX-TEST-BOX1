@@ -78,3 +78,4 @@ Build a Web + Dashboard system that collects security news and vulnerability dat
 - 2026-07-03: Added Tanium read-only endpoint inventory sync, basic CVE impact analysis against installed applications, detection listing API, and dashboard controls for endpoint sync/impact analysis.
 - 2026-07-03: Next impact-analysis hardening step is NVD CPE/version-range extraction and version-aware endpoint matching before moving to LLM summaries.
 - 2026-07-03: Added LLM-ready article summarization API with deterministic fallback summaries and a dashboard Trend Brief panel with source-linked news and priority CVE summaries.
+- 2026-07-03: Installed Ollama on the Ubuntu server. `qwen3:4b` was too slow on CPU-only, so `qwen2.5:1.5b` is the active local LLM for first-pass Korean security summaries.

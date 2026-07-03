@@ -1,9 +1,12 @@
 import httpx
+import re
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
 from app.db.models import Article, Vulnerability
+
+THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
 
 
 class SummaryService:
@@ -17,22 +20,29 @@ class SummaryService:
                 {
                     "role": "system",
                     "content": (
-                        "You summarize security issues in Korean. Use only the provided text. "
-                        "Mention uncertainty. Do not invent affected products or CVEs."
+                        "You are a Korean security analyst. Always answer in Korean only. "
+                        "Summarize the security issue in 2-4 concise Korean sentences. "
+                        "Use only the provided text. Mention uncertainty. "
+                        "Do not invent affected products or CVEs. "
+                        "Do not include chain-of-thought, hidden reasoning, or <think> blocks."
                     ),
                 },
                 {
                     "role": "user",
-                    "content": f"Title: {title}\n\nBody:\n{body[:8000]}\n\nSources:\n" + "\n".join(source_urls),
+                    "content": (
+                        "아래 내용을 한국어로만 요약하세요.\n\n"
+                        f"Title: {title}\n\nBody:\n{body[:8000]}\n\nSources:\n" + "\n".join(source_urls)
+                    ),
                 },
             ],
             "temperature": 0.2,
+            "max_tokens": settings.llm_max_tokens,
         }
         headers = {"Content-Type": "application/json"}
         if settings.llm_api_key:
             headers["Authorization"] = f"Bearer {settings.llm_api_key}"
 
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(timeout=settings.llm_timeout_seconds) as client:
             response = await client.post(
                 f"{settings.llm_base_url.rstrip('/')}/chat/completions",
                 json=payload,
@@ -40,7 +50,8 @@ class SummaryService:
             )
             response.raise_for_status()
             data = response.json()
-            return data["choices"][0]["message"]["content"]
+            content = data["choices"][0]["message"]["content"]
+            return THINK_BLOCK_RE.sub("", content).strip()
 
 
 def _compact(value: str | None, limit: int = 700) -> str:
@@ -88,7 +99,10 @@ async def summarize_recent_articles(db: Session, limit: int = 20) -> tuple[int, 
         body = article.raw_excerpt or article.title
         summary = None
         if settings.llm_provider != "disabled":
-            summary = await service.summarize(article.title, body, [article.url])
+            try:
+                summary = await service.summarize(article.title, body, [article.url])
+            except Exception:
+                summary = None
         article.summary = summary or _fallback_article_summary(article)
         changed += 1
     db.commit()
