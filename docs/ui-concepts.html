@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SecureWatch Operations Dashboard</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #0b1117;
+        color: #e6edf3;
+        letter-spacing: 0;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        background: #0b1117;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      button {
+        font: inherit;
+      }
+
+      .app {
+        display: grid;
+        grid-template-columns: 240px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        border-right: 1px solid #263240;
+        background: #101821;
+        padding: 20px 16px;
+      }
+
+      .brand {
+        margin-bottom: 26px;
+      }
+
+      .brand strong {
+        display: block;
+        font-size: 19px;
+      }
+
+      .brand span {
+        display: block;
+        margin-top: 4px;
+        color: #8b98a6;
+        font-size: 12px;
+      }
+
+      .nav {
+        display: grid;
+        gap: 6px;
+      }
+
+      .nav a {
+        border-radius: 6px;
+        padding: 10px 12px;
+        color: #9aa7b5;
+        font-size: 14px;
+        font-weight: 680;
+      }
+
+      .nav a:hover,
+      .nav a:focus,
+      .nav a.active {
+        outline: none;
+        background: #17313b;
+        color: #86e8f9;
+      }
+
+      .workspace {
+        min-width: 0;
+        padding: 22px;
+      }
+
+      .page-view {
+        display: none;
+      }
+
+      .page-view.active {
+        display: block;
+      }
+
+      .top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      .top h1 {
+        margin: 0;
+        font-size: 23px;
+      }
+
+      .top p {
+        margin: 6px 0 0;
+        color: #8b98a6;
+        font-size: 13px;
+      }
+
+      .time {
+        display: inline-flex;
+        align-items: center;
+        min-height: 30px;
+        border: 1px solid #263240;
+        border-radius: 999px;
+        background: #101821;
+        padding: 0 11px;
+        color: #9aa7b5;
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+
+      .metric,
+      .panel,
+      .page-card {
+        border: 1px solid #263240;
+        border-radius: 8px;
+        background: #141d26;
+      }
+
+      .metric {
+        min-height: 94px;
+        padding: 14px;
+      }
+
+      .metric label {
+        display: block;
+        color: #8b98a6;
+        font-size: 12px;
+        font-weight: 760;
+      }
+
+      .metric strong {
+        display: block;
+        margin-top: 7px;
+        font-size: 24px;
+      }
+
+      .metric small {
+        display: block;
+        margin-top: 5px;
+        color: #8b98a6;
+        font-size: 12px;
+      }
+
+      .dashboard-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.45fr) minmax(360px, 1fr);
+        gap: 14px;
+      }
+
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        border-bottom: 1px solid #263240;
+        padding: 13px 14px;
+      }
+
+      .panel-header h2 {
+        margin: 0;
+        font-size: 15px;
+      }
+
+      .link-button {
+        border: 1px solid #365263;
+        border-radius: 6px;
+        background: #102733;
+        color: #8de2f3;
+        padding: 7px 10px;
+        font-size: 12px;
+        font-weight: 780;
+      }
+
+      .table {
+        display: grid;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 122px 98px 70px minmax(220px, 1fr);
+        gap: 10px;
+        border-bottom: 1px solid #202c38;
+        padding: 12px 14px;
+        color: #d9e3ec;
+        font-size: 13px;
+      }
+
+      .row.header {
+        color: #8b98a6;
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .chip,
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: fit-content;
+        min-height: 24px;
+        border-radius: 999px;
+        padding: 0 9px;
+        font-size: 12px;
+        font-weight: 760;
+        white-space: nowrap;
+      }
+
+      .critical {
+        background: #4a1719;
+        color: #ffb4ad;
+      }
+
+      .high {
+        background: #3b2d12;
+        color: #ffd98a;
+      }
+
+      .ok {
+        background: #123524;
+        color: #91e7b5;
+      }
+
+      .neutral {
+        background: #24313d;
+        color: #b7c3cf;
+      }
+
+      .brief {
+        display: grid;
+        gap: 12px;
+        padding: 14px;
+      }
+
+      .brief article {
+        border-left: 3px solid #0f6b79;
+        padding-left: 10px;
+      }
+
+      .brief strong {
+        display: block;
+        margin-bottom: 5px;
+        color: #edf5fa;
+        font-size: 14px;
+      }
+
+      .brief p,
+      .post p,
+      .page-card header p {
+        margin: 0;
+        color: #9aa7b5;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .section {
+        margin-top: 0;
+      }
+
+      .section-title {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 14px;
+        margin-bottom: 10px;
+      }
+
+      .section-title h2 {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      .section-title p {
+        margin: 5px 0 0;
+        color: #8b98a6;
+        font-size: 13px;
+      }
+
+      .page-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .page-card {
+        overflow: hidden;
+      }
+
+      .page-card header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid #263240;
+        padding: 14px;
+      }
+
+      .page-card h3 {
+        margin: 0 0 6px;
+        font-size: 15px;
+      }
+
+      .body {
+        display: grid;
+        gap: 12px;
+        padding: 14px;
+      }
+
+      .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .stat {
+        border: 1px solid #263240;
+        border-radius: 7px;
+        background: #101821;
+        padding: 10px;
+      }
+
+      .stat label {
+        display: block;
+        color: #8b98a6;
+        font-size: 11px;
+        font-weight: 760;
+        text-transform: uppercase;
+      }
+
+      .stat strong {
+        display: block;
+        margin-top: 6px;
+        font-size: 16px;
+      }
+
+      .post {
+        border: 1px solid #263240;
+        border-radius: 7px;
+        background: #101821;
+        padding: 12px;
+      }
+
+      .post h4 {
+        margin: 0 0 8px;
+        color: #f0f5f9;
+        font-size: 14px;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+        margin-top: 10px;
+      }
+
+      .meta span {
+        border: 1px solid #304153;
+        border-radius: 999px;
+        padding: 4px 8px;
+        color: #9aa7b5;
+        font-size: 11px;
+        font-weight: 720;
+      }
+
+      .inventory-row {
+        display: grid;
+        grid-template-columns: 150px 120px minmax(160px, 1fr) 120px;
+        gap: 10px;
+        border-bottom: 1px solid #202c38;
+        padding: 12px 14px;
+        font-size: 13px;
+      }
+
+      .inventory-row.header {
+        color: #8b98a6;
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      @media (max-width: 1120px) {
+        .app {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          position: static;
+          height: auto;
+          border-right: 0;
+          border-bottom: 1px solid #263240;
+        }
+
+        .nav {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .dashboard-grid,
+        .page-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .metrics {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 680px) {
+        .workspace {
+          padding: 14px;
+        }
+
+        .top,
+        .section-title,
+        .page-card header {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .nav,
+        .metrics,
+        .stat-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .row,
+        .inventory-row {
+          grid-template-columns: 1fr;
+        }
+
+        .row.header,
+        .inventory-row.header {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <strong>SecureWatch</strong>
+          <span>Security Operations</span>
+        </div>
+        <nav class="nav" aria-label="SecureWatch navigation">
+          <a class="active" href="#/dashboard" data-route="dashboard">Dashboard</a>
+          <a href="#/cves" data-route="cves">CVE</a>
+          <a href="#/security-news" data-route="security-news">Security News</a>
+          <a href="#/tanium-inventory" data-route="tanium-inventory">Tanium Inventory</a>
+          <a href="#/reports" data-route="reports">Reports</a>
+          <a href="#/settings" data-route="settings">Settings</a>
+        </nav>
+      </aside>
+
+      <section class="workspace">
+        <section class="page-view active" data-page="dashboard">
+        <header class="top">
+          <div>
+            <h1>Security Operations</h1>
+            <p>수집한 보안 뉴스, CVE, Tanium 단말 정보를 한 화면에서 확인합니다.</p>
+          </div>
+          <span class="time">Updated 2026-07-06 13:20 KST</span>
+        </header>
+
+        <section class="metrics" aria-label="Dashboard metrics">
+          <article class="metric"><label>CVE / KEV</label><strong>126 / 14</strong></article>
+          <article class="metric"><label>News</label><strong>58</strong></article>
+          <article class="metric"><label>Endpoints</label><strong>412</strong></article>
+          <article class="metric"><label>Detections</label><strong>9</strong></article>
+          <article class="metric"><label>Tanium</label><strong>Online</strong><small>Gateway/API 정상</small></article>
+        </section>
+
+        <section class="dashboard-grid">
+          <article class="panel">
+            <div class="panel-header">
+              <h2>High Priority CVE / KEV</h2>
+              <a class="link-button" href="#/cves">CVE / KEV 전체 보기</a>
+            </div>
+            <div class="table">
+              <div class="row header"><span>CVE</span><span>KEV/Severity</span><span>EPSS</span><span>한글 요약</span></div>
+              <div class="row"><strong>CVE-2014-0160</strong><span class="chip critical">KEV</span><span>100%</span><span>OpenSSL Heartbeat 처리 취약점으로 민감 정보 노출 가능성이 있어 우선 점검이 필요합니다.</span></div>
+              <div class="row"><strong>CVE-2017-5638</strong><span class="chip critical">Critical</span><span>100%</span><span>Apache Struts 원격 코드 실행 취약점으로 노출 서버와 관련 패키지 확인이 필요합니다.</span></div>
+              <div class="row"><strong>CVE-2026-1124</strong><span class="chip high">High</span><span>71%</span><span>공개 익스플로잇 가능성이 있어 영향 단말과 패치 상태를 함께 확인해야 합니다.</span></div>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <h2>Trend Brief</h2>
+              <a class="link-button" href="#/security-news">Trend 게시글 전체 보기</a>
+            </div>
+            <div class="brief">
+              <article>
+                <strong>위성 네트워크 악용 가능성 증가</strong>
+                <p>상업용 위성망이 드론 제어 경로로 악용될 수 있어 접근 제어와 승인 장비 목록 관리가 중요합니다.</p>
+              </article>
+              <article>
+                <strong>VPN 및 외부 노출 장비 점검 필요</strong>
+                <p>최신 CVE와 Tanium 인벤토리를 연결해 노출 단말을 먼저 좁히는 운영 흐름이 필요합니다.</p>
+              </article>
+            </div>
+          </article>
+        </section>
+        </section>
+
+        <section class="page-view section" data-page="cves">
+          <div class="section-title">
+            <div>
+              <h2>CVE</h2>
+              <p>수집한 CVE, KEV, EPSS, 영향 단말 후보를 게시글 형태로 확인합니다.</p>
+            </div>
+            <span class="pill critical">126 CVEs</span>
+          </div>
+          <div class="page-grid">
+            <article class="page-card">
+              <header>
+                <div>
+                  <h3>CVE / KEV 상세</h3>
+                  <p>NVD, CISA KEV, EPSS, Tanium 탐지 결과를 함께 표시합니다.</p>
+                </div>
+                <span class="pill critical">9 affected</span>
+              </header>
+              <div class="body">
+                <div class="stat-grid">
+                  <div class="stat"><label>CVE</label><strong>126</strong></div>
+                  <div class="stat"><label>KEV</label><strong>14</strong></div>
+                  <div class="stat"><label>Open</label><strong>23</strong></div>
+                </div>
+                <article class="post">
+                  <h4>CVE-2017-5638 · Apache Struts Remote Code Execution</h4>
+                  <p>Apache Struts 취약점으로 원격 코드 실행 가능성이 있습니다. Tanium 인벤토리 기준 웹 서버 3대가 후보로 확인되어 패키지 버전과 외부 노출 여부 확인이 필요합니다.</p>
+                  <div class="meta"><span>NVD</span><span>CISA KEV</span><span>EPSS 100%</span><span>Detected endpoints 3</span></div>
+                </article>
+                <article class="post">
+                  <h4>CVE-2014-0160 · OpenSSL Information Disclosure</h4>
+                  <p>OpenSSL Heartbeat 처리 취약점으로 메모리 정보 노출 가능성이 있습니다. 기존 레거시 서버군에서 관련 패키지 확인과 인증서 재발급 필요성을 함께 검토해야 합니다.</p>
+                  <div class="meta"><span>KEV</span><span>EPSS 100%</span><span>Status: Review</span></div>
+                </article>
+              </div>
+            </article>
+
+            <article class="page-card">
+              <header>
+                <div>
+                  <h3>CVE 상세 게시글</h3>
+                  <p>각 CVE는 원문 링크, 한글 요약, 영향 제품, 조치 메모를 포함합니다.</p>
+                </div>
+                <span class="pill neutral">read-only</span>
+              </header>
+              <div class="body">
+                <article class="post">
+                  <h4>CVE-2026-1124 · 공개 익스플로잇 가능성</h4>
+                  <p>공개 익스플로잇 가능성이 있어 영향 단말과 패치 상태를 함께 확인해야 합니다. 버전 범위가 불확실하면 수동 검토 대상으로 분류합니다.</p>
+                  <div class="meta"><span>High</span><span>EPSS 71%</span><span>Manual review</span></div>
+                </article>
+                <article class="post">
+                  <h4>조치 우선순위</h4>
+                  <p>KEV 포함 여부, EPSS, CVSS, 외부 노출 여부, Tanium 탐지 후보 수를 합산해 조치 우선순위를 표시합니다.</p>
+                  <div class="meta"><span>KEV first</span><span>Exposure</span><span>Tanium match</span></div>
+                </article>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="page-view section" data-page="security-news">
+          <div class="section-title">
+            <div>
+              <h2>Security News</h2>
+              <p>수집한 보안 뉴스, 사건사고, KISA 공지, 해외 뉴스를 한글 요약과 함께 제공합니다.</p>
+            </div>
+            <span class="pill neutral">58 news</span>
+          </div>
+          <div class="page-grid">
+            <article class="page-card">
+              <header>
+                <div>
+                  <h3>뉴스 게시글 목록</h3>
+                  <p>원문 링크와 출처, 게시일, 관련 CVE 태그를 함께 표시합니다.</p>
+                </div>
+                <span class="pill ok">RSS active</span>
+              </header>
+              <div class="body">
+                <article class="post">
+                  <h4>위성 네트워크 악용 가능성 증가</h4>
+                  <p>상업용 위성망이 드론 제어 경로로 악용될 수 있다는 이슈가 확인되었습니다. 승인 장비 목록, 네트워크 접근 제어, 이상 통신 탐지 정책을 함께 점검해야 합니다.</p>
+                  <div class="meta"><span>Boannews</span><span>2026-07-03</span><span>원문 링크</span></div>
+                </article>
+                <article class="post">
+                  <h4>KISA 보안공지 · 신규 취약점 주의</h4>
+                  <p>수집된 원문 링크와 로컬 LLM 한글 요약을 함께 표시합니다. 출처, 게시일, 태그, 관련 CVE 연결 정보를 확인할 수 있습니다.</p>
+                  <div class="meta"><span>KISA</span><span>보안공지</span><span>관련 CVE</span></div>
+                </article>
+              </div>
+            </article>
+
+            <article class="page-card">
+              <header>
+                <div>
+                  <h3>해외 뉴스 한글 요약</h3>
+                  <p>영문 원문은 한글 요약으로 먼저 보여주고 원문으로 이동할 수 있습니다.</p>
+                </div>
+                <span class="pill neutral">LLM summary</span>
+              </header>
+              <div class="body">
+                <article class="post">
+                  <h4>KrebsOnSecurity · 해외 보안 이슈</h4>
+                  <p>영문 보안 뉴스는 로컬 LLM이 한글로 요약하고, 요약 품질이 낮으면 안전한 한글 폴백 문구로 표시합니다.</p>
+                  <div class="meta"><span>KrebsOnSecurity</span><span>English source</span><span>한글 요약</span></div>
+                </article>
+                <article class="post">
+                  <h4>BleepingComputer · 보안 동향</h4>
+                  <p>제품 보안 업데이트, 공격 캠페인, 침해 사고 뉴스를 수집해 대시보드 Trend Brief와 연결합니다.</p>
+                  <div class="meta"><span>BleepingComputer</span><span>RSS</span><span>원문 링크</span></div>
+                </article>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="page-view section" data-page="tanium-inventory">
+          <div class="section-title">
+            <div>
+              <h2>Tanium Inventory</h2>
+              <p>Tanium API로 수집한 단말, OS, IP, 설치 소프트웨어, CVE 매칭 근거를 제공합니다.</p>
+            </div>
+            <span class="pill ok">412 endpoints</span>
+          </div>
+          <article class="page-card">
+            <header>
+              <div>
+                <h3>수집 단말 목록</h3>
+                <p>단말 상세에서 설치 소프트웨어와 취약점 매칭 근거를 확인합니다.</p>
+              </div>
+              <span class="pill neutral">read-only</span>
+            </header>
+            <div class="table">
+              <div class="inventory-row header"><span>Endpoint</span><span>IP</span><span>OS / Software</span><span>Risk</span></div>
+              <div class="inventory-row"><strong>web-prod-03</strong><span>10.10.20.31</span><span>Ubuntu 24.04 · Apache Struts 후보</span><span class="chip critical">High</span></div>
+              <div class="inventory-row"><strong>legacy-was-02</strong><span>10.10.21.18</span><span>Windows Server · OpenSSL 확인 필요</span><span class="chip high">Review</span></div>
+              <div class="inventory-row"><strong>app-stage-01</strong><span>10.10.22.44</span><span>Linux · 패키지 버전 수동 확인</span><span class="chip neutral">Medium</span></div>
+            </div>
+          </article>
+        </section>
+
+        <section class="page-view section" data-page="reports">
+          <div class="section-title">
+            <div>
+              <h2>Reports</h2>
+              <p>운영 보고서 영역입니다. 이후 CVE 조치 현황과 뉴스 브리핑 내보내기를 연결합니다.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="page-view section" data-page="settings">
+          <div class="section-title">
+            <div>
+              <h2>Settings</h2>
+              <p>수집 주기, LLM 모델, Tanium 연결 설정을 관리하는 영역입니다.</p>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+    <script>
+      const pageTitles = {
+        dashboard: "Security Operations",
+        cves: "CVE",
+        "security-news": "Security News",
+        "tanium-inventory": "Tanium Inventory",
+        reports: "Reports",
+        settings: "Settings",
+      };
+
+      function getRoute() {
+        const route = location.hash.replace(/^#\/?/, "");
+        return pageTitles[route] ? route : "dashboard";
+      }
+
+      function renderRoute() {
+        const route = getRoute();
+        document.querySelectorAll("[data-page]").forEach((page) => {
+          page.classList.toggle("active", page.dataset.page === route);
+        });
+        document.querySelectorAll("[data-route]").forEach((link) => {
+          link.classList.toggle("active", link.dataset.route === route);
+        });
+        document.title = `SecureWatch - ${pageTitles[route]}`;
+        window.scrollTo(0, 0);
+      }
+
+      window.addEventListener("hashchange", renderRoute);
+      renderRoute();
+    </script>
+  </body>
+</html>

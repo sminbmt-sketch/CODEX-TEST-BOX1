@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity, AlertTriangle, DatabaseZap, ExternalLink, FileText, Radar, RefreshCw, Server, ShieldCheck, Wifi } from "lucide-react";
 import { api, type Article, type DashboardSummary, type Detection, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
-import { MetricCard } from "./components/MetricCard";
+
+type Route = "dashboard" | "cves" | "security-news" | "tanium-inventory" | "reports" | "settings";
 
 type LoadState = {
   summary?: DashboardSummary;
@@ -22,6 +23,23 @@ const emptyState: LoadState = {
   loading: true,
 };
 
+const navItems: { route: Route; label: string }[] = [
+  { route: "dashboard", label: "Dashboard" },
+  { route: "cves", label: "CVE" },
+  { route: "security-news", label: "Security News" },
+  { route: "tanium-inventory", label: "Tanium Inventory" },
+  { route: "reports", label: "Reports" },
+  { route: "settings", label: "Settings" },
+];
+
+function routeFromHash(): Route {
+  const value = window.location.hash.replace(/^#\/?/, "");
+  if (value === "cves" || value === "security-news" || value === "tanium-inventory" || value === "reports" || value === "settings") {
+    return value;
+  }
+  return "dashboard";
+}
+
 function formatDate(value?: string | null) {
   if (!value) return "-";
   return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
@@ -29,14 +47,23 @@ function formatDate(value?: string | null) {
 
 function severityClass(severity?: string | null) {
   const value = severity?.toLowerCase();
-  if (value === "critical") return "severity critical";
-  if (value === "high") return "severity high";
-  if (value === "medium") return "severity medium";
-  return "severity";
+  if (value === "critical") return "chip critical";
+  if (value === "high") return "chip high";
+  if (value === "medium") return "chip neutral";
+  return "chip neutral";
+}
+
+function epss(value?: number | null) {
+  return value != null ? `${Math.round(value * 1000) / 10}%` : "-";
+}
+
+function vulnerabilitySummary(item: Vulnerability) {
+  return item.summary || item.description || "수집된 원문 링크와 CVE 메타데이터 확인이 필요합니다.";
 }
 
 export default function App() {
   const [state, setState] = useState<LoadState>(emptyState);
+  const [route, setRoute] = useState<Route>(() => routeFromHash());
 
   async function load() {
     setState((current) => ({ ...current, loading: true, error: undefined }));
@@ -74,237 +101,321 @@ export default function App() {
   }
 
   useEffect(() => {
+    const onHashChange = () => setRoute(routeFromHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  useEffect(() => {
     void load();
   }, []);
 
   const metrics = useMemo(() => {
     const summary = state.summary;
     return [
-      { label: "CVE", value: summary?.vulnerability_count ?? 0, icon: <ShieldCheck size={20} /> },
-      { label: "KEV", value: summary?.kev_count ?? 0, icon: <AlertTriangle size={20} />, tone: "danger" as const },
-      { label: "News", value: summary?.article_count ?? 0, icon: <FileText size={20} /> },
-      { label: "Endpoints", value: summary?.endpoint_count ?? 0, icon: <Server size={20} /> },
-      { label: "Detections", value: summary?.detection_count ?? 0, icon: <Activity size={20} />, tone: "warning" as const },
+      { label: "CVE / KEV", value: `${summary?.vulnerability_count ?? 0} / ${summary?.kev_count ?? 0}` },
+      { label: "News", value: summary?.article_count ?? 0 },
+      { label: "Endpoints", value: summary?.endpoint_count ?? 0 },
+      { label: "Detections", value: summary?.detection_count ?? 0 },
+      {
+        label: "Tanium",
+        value: state.tanium?.configured ? "Online" : "Missing",
+        sub: state.tanium?.configured ? "Gateway/API 정상" : "연결 설정 필요",
+      },
     ];
-  }, [state.summary]);
+  }, [state.summary, state.tanium]);
+
+  const endpointRows = useMemo(() => {
+    const seen = new Set<number>();
+    return state.detections
+      .filter((detection) => {
+        if (seen.has(detection.endpoint.id)) return false;
+        seen.add(detection.endpoint.id);
+        return true;
+      })
+      .map((detection) => ({ endpoint: detection.endpoint, detection }));
+  }, [state.detections]);
 
   return (
-    <main className="app-shell">
-      <header className="topbar">
-        <div>
-          <h1>SecureWatch</h1>
-          <p>Security trend and Tanium impact dashboard</p>
+    <main className="ops-app">
+      <aside className="sidebar">
+        <div className="brand">
+          <strong>SecureWatch</strong>
+          <span>Security Operations</span>
         </div>
-        <div className={state.tanium?.configured ? "status ok" : "status warn"}>
-          <Wifi size={18} />
-          <span>{state.tanium?.configured ? "Tanium configured" : "Tanium not configured"}</span>
-        </div>
-      </header>
+        <nav className="nav" aria-label="SecureWatch navigation">
+          {navItems.map((item) => (
+            <a key={item.route} className={route === item.route ? "active" : undefined} href={`#/${item.route}`}>
+              {item.label}
+            </a>
+          ))}
+        </nav>
+      </aside>
 
-      <section className="toolbar">
-        <button title="Refresh dashboard" onClick={() => void load()} disabled={state.loading}>
-          <RefreshCw size={16} />
-          <span>Refresh</span>
-        </button>
-        <button title="Collect NVD CVEs" onClick={() => void runAction("NVD", api.collectNvd)} disabled={Boolean(state.action)}>
-          <DatabaseZap size={16} />
-          <span>NVD</span>
-        </button>
-        <button title="Collect CISA KEV" onClick={() => void runAction("CISA KEV", api.collectCisaKev)} disabled={Boolean(state.action)}>
-          <AlertTriangle size={16} />
-          <span>KEV</span>
-        </button>
-        <button title="Update EPSS scores" onClick={() => void runAction("EPSS", api.collectEpss)} disabled={Boolean(state.action)}>
-          <Activity size={16} />
-          <span>EPSS</span>
-        </button>
-        <button title="Collect security news" onClick={() => void runAction("News", api.collectNews)} disabled={Boolean(state.action)}>
-          <FileText size={16} />
-          <span>News</span>
-        </button>
-        <button title="Generate Korean news and CVE summaries" onClick={() => void runAction("Summaries", api.summarizeAll)} disabled={Boolean(state.action)}>
-          <FileText size={16} />
-          <span>Summaries</span>
-        </button>
-        <button title="Sync Tanium endpoint inventory" onClick={() => void runAction("Endpoint sync", api.taniumSyncEndpoints)} disabled={Boolean(state.action)}>
-          <Server size={16} />
-          <span>Endpoints</span>
-        </button>
-        <button title="Analyze CVE impact against Tanium inventory" onClick={() => void runAction("Impact analysis", api.taniumAnalyzeImpact)} disabled={Boolean(state.action)}>
-          <Radar size={16} />
-          <span>Analyze</span>
-        </button>
-      </section>
+      <section className="workspace">
+        {state.error && <div className="notice error">{state.error}</div>}
+        {state.action && <div className="notice">Running {state.action}</div>}
 
-      {state.error && <div className="notice error">{state.error}</div>}
-      {state.action && <div className="notice">Running {state.action}</div>}
+        {route === "dashboard" && (
+          <>
+            <header className="top">
+              <div>
+                <h1>Security Operations</h1>
+                <p>수집한 보안 뉴스, CVE, Tanium 단말 정보를 한 화면에서 요약합니다.</p>
+              </div>
+              <span className="time">{state.loading ? "Loading" : "Live data"}</span>
+            </header>
 
-      <section className="metrics-grid">
-        {metrics.map((metric) => (
-          <MetricCard key={metric.label} {...metric} />
-        ))}
-      </section>
-
-      <section className="content-grid">
-        <div className="panel full-width">
-          <div className="panel-header">
-            <h2>Trend Brief</h2>
-          </div>
-          <div className="trend-brief">
-            <div className="theme-list">
-              {(state.trends?.themes || []).map((theme) => (
-                <p key={theme}>{theme}</p>
+            <section className="metrics" aria-label="Dashboard metrics">
+              {metrics.map((metric) => (
+                <article key={metric.label} className="metric">
+                  <label>{metric.label}</label>
+                  <strong>{metric.value}</strong>
+                  {metric.sub && <small>{metric.sub}</small>}
+                </article>
               ))}
-              {!state.trends?.themes.length && <div className="empty block">No trend summary</div>}
-            </div>
-            <div className="brief-grid">
-              <div>
-                <h3>News Signals</h3>
-                {(state.trends?.news || []).slice(0, 4).map((item) => (
-                  <article key={item.url} className="brief-item">
-                    <a href={item.url} target="_blank" rel="noreferrer">
-                      {item.title}
-                      <ExternalLink size={13} />
-                    </a>
-                    <p>{item.summary}</p>
-                  </article>
-                ))}
-              </div>
-              <div>
-                <h3>Priority CVEs</h3>
-                {(state.trends?.vulnerabilities || []).slice(0, 4).map((item) => (
-                  <article key={item.cve_id} className="brief-item">
-                    {item.url ? (
-                      <a href={item.url} target="_blank" rel="noreferrer">
-                        {item.cve_id}
-                        <ExternalLink size={13} />
-                      </a>
-                    ) : (
-                      <strong>{item.cve_id}</strong>
-                    )}
-                    <p>{item.summary}</p>
-                  </article>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
+            </section>
 
-        <div className="panel wide">
-          <div className="panel-header">
-            <h2>High Priority Vulnerabilities</h2>
-          </div>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>CVE</th>
-                  <th>Severity</th>
-                  <th>CVSS</th>
-                  <th>EPSS</th>
-                  <th>Vendor</th>
-                  <th>Summary</th>
-                  <th>Published</th>
-                </tr>
-              </thead>
-              <tbody>
-                {state.vulnerabilities.map((item) => (
-                  <tr key={item.id}>
-                    <td>
-                      {item.source_url ? (
-                        <a href={item.source_url} target="_blank" rel="noreferrer">
-                          {item.cve_id}
-                          <ExternalLink size={13} />
-                        </a>
-                      ) : (
-                        item.cve_id
-                      )}
-                      {item.kev && <span className="kev">KEV</span>}
-                    </td>
-                    <td>
-                      <span className={severityClass(item.cvss_severity)}>{item.cvss_severity || "-"}</span>
-                    </td>
-                    <td>{item.cvss_score ?? "-"}</td>
-                    <td>{item.epss_score != null ? `${Math.round(item.epss_score * 1000) / 10}%` : "-"}</td>
-                    <td>{[item.vendor, item.product].filter(Boolean).join(" / ") || "-"}</td>
-                    <td className="summary-cell">{item.summary || item.description || "-"}</td>
-                    <td>{formatDate(item.published_at)}</td>
-                  </tr>
-                ))}
-                {!state.vulnerabilities.length && (
-                  <tr>
-                    <td colSpan={7} className="empty">
-                      No vulnerability data
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="panel">
-          <div className="panel-header">
-            <h2>Security News</h2>
-          </div>
-          <div className="news-list">
-            {state.articles.map((article) => (
-              <article key={article.id} className="news-item">
-                <a href={article.url} target="_blank" rel="noreferrer">
-                  {article.title}
-                  <ExternalLink size={13} />
-                </a>
-                <span>{article.source?.name || "Source"} · {formatDate(article.published_at)}</span>
-                {article.summary && <p>{article.summary}</p>}
-              </article>
-            ))}
-            {!state.articles.length && <div className="empty block">No news data</div>}
-          </div>
-        </div>
-
-        <div className="panel">
-          <div className="panel-header">
-            <h2>Tanium</h2>
-          </div>
-          <dl className="status-list">
-            <div>
-              <dt>Gateway</dt>
-              <dd>{state.tanium?.configured ? "Configured" : "Missing"}</dd>
-            </div>
-            <div>
-              <dt>Endpoint</dt>
-              <dd>{state.tanium?.gateway_url || "-"}</dd>
-            </div>
-          </dl>
-          <button className="full" title="Run read-only Gateway test" onClick={() => void runAction("Tanium test", api.taniumTest)} disabled={Boolean(state.action)}>
-            <Wifi size={16} />
-            <span>Test Gateway</span>
-          </button>
-        </div>
-
-        <div className="panel">
-          <div className="panel-header">
-            <h2>Impact Detections</h2>
-          </div>
-          <div className="detection-list">
-            {state.detections.map((detection) => (
-              <article key={detection.id} className="detection-item">
-                <div>
-                  <strong>{detection.vulnerability.cve_id}</strong>
-                  <span className={severityClass(detection.vulnerability.cvss_severity)}>
-                    {detection.vulnerability.cvss_severity || "match"}
-                  </span>
+            <section className="dashboard-grid">
+              <article className="panel">
+                <div className="panel-header">
+                  <h2>High Priority CVE / KEV</h2>
+                  <a className="link-button" href="#/cves">
+                    CVE / KEV 전체 보기
+                  </a>
                 </div>
-                <p>{detection.endpoint.hostname || detection.endpoint.tanium_endpoint_id || "Unknown endpoint"}</p>
-                <span>
-                  {detection.endpoint.ip_address || "-"} · {detection.endpoint.os_name || "-"} · {Math.round(detection.confidence * 100)}%
-                </span>
+                <div className="table">
+                  <div className="cve-row header">
+                    <span>CVE</span>
+                    <span>KEV/Severity</span>
+                    <span>EPSS</span>
+                    <span>한글 요약</span>
+                  </div>
+                  {state.vulnerabilities.slice(0, 4).map((item) => (
+                    <div key={item.id} className="cve-row">
+                      <strong>{item.cve_id}</strong>
+                      <span className={item.kev ? "chip critical" : severityClass(item.cvss_severity)}>{item.kev ? "KEV" : item.cvss_severity || "-"}</span>
+                      <span>{epss(item.epss_score)}</span>
+                      <span>{vulnerabilitySummary(item)}</span>
+                    </div>
+                  ))}
+                  {!state.vulnerabilities.length && <div className="empty block">No vulnerability data</div>}
+                </div>
               </article>
-            ))}
-            {!state.detections.length && <div className="empty block">No impact detections</div>}
-          </div>
-        </div>
+
+              <article className="panel">
+                <div className="panel-header">
+                  <h2>Trend Brief</h2>
+                  <a className="link-button" href="#/security-news">
+                    Trend 게시글 전체 보기
+                  </a>
+                </div>
+                <div className="brief">
+                  {(state.trends?.themes || []).slice(0, 2).map((theme) => (
+                    <article key={theme}>
+                      <strong>Trend</strong>
+                      <p>{theme}</p>
+                    </article>
+                  ))}
+                  {(state.trends?.news || []).slice(0, 2).map((item) => (
+                    <article key={item.url}>
+                      <strong>{item.title}</strong>
+                      <p>{item.summary}</p>
+                    </article>
+                  ))}
+                  {!state.trends?.themes.length && !state.trends?.news.length && <div className="empty block">No trend summary</div>}
+                </div>
+              </article>
+            </section>
+          </>
+        )}
+
+        {route === "cves" && (
+          <section>
+            <PageTitle title="CVE" description="수집한 CVE, KEV, EPSS, 영향 단말 후보를 게시글 형태로 확인합니다." badge={`${state.vulnerabilities.length} CVEs`} tone="critical" />
+            <div className="page-grid">
+              {state.vulnerabilities.map((item) => (
+                <article key={item.id} className="page-card">
+                  <header>
+                    <div>
+                      <h3>
+                        {item.source_url ? (
+                          <a href={item.source_url} target="_blank" rel="noreferrer">
+                            {item.cve_id} <ExternalLink size={13} />
+                          </a>
+                        ) : (
+                          item.cve_id
+                        )}
+                      </h3>
+                      <p>{item.title || [item.vendor, item.product].filter(Boolean).join(" / ") || "제품 식별 정보 확인 필요"}</p>
+                    </div>
+                    <span className={item.kev ? "pill critical" : severityClass(item.cvss_severity)}>{item.kev ? "KEV" : item.cvss_severity || "CVE"}</span>
+                  </header>
+                  <div className="body">
+                    <div className="stat-grid">
+                      <div className="stat">
+                        <label>CVSS</label>
+                        <strong>{item.cvss_score ?? "-"}</strong>
+                      </div>
+                      <div className="stat">
+                        <label>EPSS</label>
+                        <strong>{epss(item.epss_score)}</strong>
+                      </div>
+                      <div className="stat">
+                        <label>Published</label>
+                        <strong>{formatDate(item.published_at)}</strong>
+                      </div>
+                    </div>
+                    <article className="post">
+                      <h4>한글 요약</h4>
+                      <p>{vulnerabilitySummary(item)}</p>
+                      <div className="meta">
+                        {item.vendor && <span>{item.vendor}</span>}
+                        {item.product && <span>{item.product}</span>}
+                        {item.kev && <span>CISA KEV</span>}
+                      </div>
+                    </article>
+                  </div>
+                </article>
+              ))}
+              {!state.vulnerabilities.length && <div className="empty block">No CVE data</div>}
+            </div>
+          </section>
+        )}
+
+        {route === "security-news" && (
+          <section>
+            <PageTitle title="Security News" description="수집한 보안 뉴스, 사건사고, KISA 공지, 해외 뉴스를 한글 요약과 함께 제공합니다." badge={`${state.articles.length} news`} />
+            <div className="page-grid">
+              {state.articles.map((article) => (
+                <article key={article.id} className="page-card">
+                  <header>
+                    <div>
+                      <h3>
+                        <a href={article.url} target="_blank" rel="noreferrer">
+                          {article.title} <ExternalLink size={13} />
+                        </a>
+                      </h3>
+                      <p>
+                        {article.source?.name || "Source"} · {formatDate(article.published_at)}
+                      </p>
+                    </div>
+                    <span className="pill neutral">{article.source?.kind || "news"}</span>
+                  </header>
+                  <div className="body">
+                    <article className="post">
+                      <h4>한글 요약</h4>
+                      <p>{article.summary || article.raw_excerpt || "요약 생성 전입니다. 원문 링크 확인이 필요합니다."}</p>
+                      <div className="meta">
+                        <span>원문 링크</span>
+                        <span>RSS</span>
+                      </div>
+                    </article>
+                  </div>
+                </article>
+              ))}
+              {!state.articles.length && <div className="empty block">No news data</div>}
+            </div>
+          </section>
+        )}
+
+        {route === "tanium-inventory" && (
+          <section>
+            <PageTitle title="Tanium Inventory" description="Tanium API로 수집한 단말, OS, IP, 설치 소프트웨어, CVE 매칭 근거를 제공합니다." badge={`${state.summary?.endpoint_count ?? 0} endpoints`} tone="ok" />
+            <article className="page-card">
+              <header>
+                <div>
+                  <h3>수집 단말 목록</h3>
+                  <p>현재 화면은 CVE 영향 분석 결과에 포함된 단말 정보를 우선 표시합니다.</p>
+                </div>
+                <span className={state.tanium?.configured ? "pill ok" : "pill neutral"}>{state.tanium?.configured ? "Online" : "Missing"}</span>
+              </header>
+              <div className="table">
+                <div className="inventory-row header">
+                  <span>Endpoint</span>
+                  <span>IP</span>
+                  <span>OS / Evidence</span>
+                  <span>Risk</span>
+                </div>
+                {endpointRows.map(({ endpoint, detection }) => (
+                  <div key={endpoint.id} className="inventory-row">
+                    <strong>{endpoint.hostname || endpoint.tanium_endpoint_id || "Unknown"}</strong>
+                    <span>{endpoint.ip_address || "-"}</span>
+                    <span>
+                      {endpoint.os_name || "-"} · {detection.vulnerability.cve_id} · {detection.match_reason}
+                    </span>
+                    <span className={detection.confidence >= 0.8 ? "chip critical" : "chip high"}>{Math.round(detection.confidence * 100)}%</span>
+                  </div>
+                ))}
+                {!endpointRows.length && <div className="empty block">No inventory detections</div>}
+              </div>
+            </article>
+          </section>
+        )}
+
+        {route === "reports" && (
+          <section>
+            <PageTitle title="Reports" description="운영 보고서 영역입니다. 이후 CVE 조치 현황과 뉴스 브리핑 내보내기를 연결합니다." />
+            <div className="page-card placeholder">Reports page placeholder</div>
+          </section>
+        )}
+
+        {route === "settings" && (
+          <section>
+            <PageTitle title="Settings" description="수집 주기, LLM 모델, Tanium 연결 설정을 관리하는 영역입니다." />
+            <div className="toolbar">
+              <button title="Refresh dashboard" onClick={() => void load()} disabled={state.loading}>
+                <RefreshCw size={16} />
+                <span>Refresh</span>
+              </button>
+              <button title="Collect NVD CVEs" onClick={() => void runAction("NVD", api.collectNvd)} disabled={Boolean(state.action)}>
+                <DatabaseZap size={16} />
+                <span>NVD</span>
+              </button>
+              <button title="Collect CISA KEV" onClick={() => void runAction("CISA KEV", api.collectCisaKev)} disabled={Boolean(state.action)}>
+                <AlertTriangle size={16} />
+                <span>KEV</span>
+              </button>
+              <button title="Update EPSS scores" onClick={() => void runAction("EPSS", api.collectEpss)} disabled={Boolean(state.action)}>
+                <Activity size={16} />
+                <span>EPSS</span>
+              </button>
+              <button title="Collect security news" onClick={() => void runAction("News", api.collectNews)} disabled={Boolean(state.action)}>
+                <FileText size={16} />
+                <span>News</span>
+              </button>
+              <button title="Generate Korean news and CVE summaries" onClick={() => void runAction("Summaries", api.summarizeAll)} disabled={Boolean(state.action)}>
+                <FileText size={16} />
+                <span>Summaries</span>
+              </button>
+              <button title="Sync Tanium endpoint inventory" onClick={() => void runAction("Endpoint sync", api.taniumSyncEndpoints)} disabled={Boolean(state.action)}>
+                <Server size={16} />
+                <span>Endpoints</span>
+              </button>
+              <button title="Analyze CVE impact against Tanium inventory" onClick={() => void runAction("Impact analysis", api.taniumAnalyzeImpact)} disabled={Boolean(state.action)}>
+                <Radar size={16} />
+                <span>Analyze</span>
+              </button>
+              <button title="Run read-only Gateway test" onClick={() => void runAction("Tanium test", api.taniumTest)} disabled={Boolean(state.action)}>
+                <Wifi size={16} />
+                <span>Test Gateway</span>
+              </button>
+            </div>
+          </section>
+        )}
       </section>
     </main>
+  );
+}
+
+function PageTitle({ title, description, badge, tone = "neutral" }: { title: string; description: string; badge?: string; tone?: "neutral" | "critical" | "ok" }) {
+  return (
+    <div className="section-title">
+      <div>
+        <h1>{title}</h1>
+        <p>{description}</p>
+      </div>
+      {badge && <span className={`pill ${tone}`}>{badge}</span>}
+    </div>
   );
 }

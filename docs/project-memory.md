@@ -80,3 +80,4 @@ Build a Web + Dashboard system that collects security news and vulnerability dat
 - 2026-07-03: Added LLM-ready article summarization API with deterministic fallback summaries and a dashboard Trend Brief panel with source-linked news and priority CVE summaries.
 - 2026-07-03: Installed Ollama on the Ubuntu server. `qwen3:4b` was too slow on CPU-only, so `qwen2.5:1.5b` is the active local LLM for first-pass Korean security summaries.
 - 2026-07-03: Extended local LLM summaries to CVE data. Dashboard summaries now generate Korean news and vulnerability summaries together and avoid displaying raw English descriptions as fallback summary text.
+- 2026-07-06: Confirmed the A operations-console UI direction and applied it to the React app as a dark, hash-routed dashboard with separate CVE, Security News, Tanium Inventory, Reports, and Settings views.
