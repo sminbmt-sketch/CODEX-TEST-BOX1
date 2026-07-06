@@ -95,6 +95,19 @@ export type TaniumStatus = {
   message: string;
 };
 
+type ListParams = {
+  limit?: number;
+  offset?: number;
+};
+
+function listQuery(params?: ListParams) {
+  const search = new URLSearchParams();
+  if (params?.limit != null) search.set("limit", String(params.limit));
+  if (params?.offset != null) search.set("offset", String(params.offset));
+  const query = search.toString();
+  return query ? `?${query}` : "";
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -112,8 +125,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   summary: () => request<DashboardSummary>("/api/dashboard/summary"),
-  vulnerabilities: () => request<Vulnerability[]>("/api/vulnerabilities?limit=25"),
-  articles: () => request<Article[]>("/api/articles?limit=25"),
+  vulnerabilities: (params?: ListParams) => request<Vulnerability[]>(`/api/vulnerabilities${listQuery(params ?? { limit: 25 })}`),
+  articles: (params?: ListParams) => request<Article[]>(`/api/articles${listQuery(params ?? { limit: 25 })}`),
   taniumStatus: () => request<TaniumStatus>("/api/tanium/status"),
   taniumTest: () => request<Record<string, unknown>>("/api/tanium/test", { method: "POST" }),
   taniumSyncEndpoints: () => request<Record<string, unknown>>("/api/tanium/sync-endpoints", { method: "POST" }),

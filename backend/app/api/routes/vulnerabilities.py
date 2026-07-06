@@ -14,6 +14,7 @@ def list_vulnerabilities(
     q: str | None = None,
     kev: bool | None = None,
     severity: str | None = None,
+    offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
 ) -> list[VulnerabilityOut]:
@@ -31,7 +32,9 @@ def list_vulnerabilities(
         query = query.where(Vulnerability.cvss_severity == severity.upper())
 
     rows = db.scalars(
-        query.order_by(Vulnerability.kev.desc(), Vulnerability.cvss_score.desc().nullslast(), Vulnerability.published_at.desc().nullslast()).limit(limit)
+        query.order_by(Vulnerability.kev.desc(), Vulnerability.cvss_score.desc().nullslast(), Vulnerability.published_at.desc().nullslast())
+        .offset(offset)
+        .limit(limit)
     ).all()
     return [VulnerabilityOut.model_validate(row) for row in rows]
 

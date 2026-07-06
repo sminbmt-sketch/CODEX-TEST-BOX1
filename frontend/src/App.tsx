@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Activity, AlertTriangle, DatabaseZap, ExternalLink, FileText, Radar, RefreshCw, Server, ShieldCheck, Wifi } from "lucide-react";
 import { api, type Article, type DashboardSummary, type Detection, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
 
@@ -32,6 +32,8 @@ const navItems: { route: Route; label: string }[] = [
   { route: "settings", label: "Settings" },
 ];
 
+const pageSizeOptions = [10, 30, 50, 100];
+
 function routeFromHash(): Route {
   const value = window.location.hash.replace(/^#\/?/, "");
   if (value === "cves" || value === "security-news" || value === "tanium-inventory" || value === "reports" || value === "settings") {
@@ -64,14 +66,18 @@ function vulnerabilitySummary(item: Vulnerability) {
 export default function App() {
   const [state, setState] = useState<LoadState>(emptyState);
   const [route, setRoute] = useState<Route>(() => routeFromHash());
+  const [cvePage, setCvePage] = useState(1);
+  const [cvePageSize, setCvePageSize] = useState(30);
+  const [newsPage, setNewsPage] = useState(1);
+  const [newsPageSize, setNewsPageSize] = useState(30);
 
   async function load() {
     setState((current) => ({ ...current, loading: true, error: undefined }));
     try {
       const [summary, vulnerabilities, articles, tanium, detections, trends] = await Promise.all([
         api.summary(),
-        api.vulnerabilities(),
-        api.articles(),
+        api.vulnerabilities({ limit: cvePageSize, offset: (cvePage - 1) * cvePageSize }),
+        api.articles({ limit: newsPageSize, offset: (newsPage - 1) * newsPageSize }),
         api.taniumStatus(),
         api.detections(),
         api.trends(),
@@ -108,7 +114,7 @@ export default function App() {
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [cvePage, cvePageSize, newsPage, newsPageSize]);
 
   const metrics = useMemo(() => {
     const summary = state.summary;
@@ -232,7 +238,23 @@ export default function App() {
 
         {route === "cves" && (
           <section>
-            <PageTitle title="CVE" description="수집한 CVE, KEV, EPSS, 영향 단말 후보를 게시글 형태로 확인합니다." badge={`${state.vulnerabilities.length} CVEs`} tone="critical" />
+            <PageTitle
+              title="CVE"
+              description="수집한 CVE, KEV, EPSS, 영향 단말 후보를 게시글 형태로 확인합니다."
+              badge={`${state.summary?.vulnerability_count ?? state.vulnerabilities.length} CVEs`}
+              tone="critical"
+            >
+              <Pager
+                page={cvePage}
+                pageSize={cvePageSize}
+                total={state.summary?.vulnerability_count ?? state.vulnerabilities.length}
+                onPageChange={setCvePage}
+                onPageSizeChange={(value) => {
+                  setCvePageSize(value);
+                  setCvePage(1);
+                }}
+              />
+            </PageTitle>
             <div className="page-grid">
               {state.vulnerabilities.map((item) => (
                 <article key={item.id} className="page-card">
@@ -285,7 +307,22 @@ export default function App() {
 
         {route === "security-news" && (
           <section>
-            <PageTitle title="Security News" description="수집한 보안 뉴스, 사건사고, KISA 공지, 해외 뉴스를 한글 요약과 함께 제공합니다." badge={`${state.articles.length} news`} />
+            <PageTitle
+              title="Security News"
+              description="수집한 보안 뉴스, 사건사고, KISA 공지, 해외 뉴스를 한글 요약과 함께 제공합니다."
+              badge={`${state.summary?.article_count ?? state.articles.length} news`}
+            >
+              <Pager
+                page={newsPage}
+                pageSize={newsPageSize}
+                total={state.summary?.article_count ?? state.articles.length}
+                onPageChange={setNewsPage}
+                onPageSizeChange={(value) => {
+                  setNewsPageSize(value);
+                  setNewsPage(1);
+                }}
+              />
+            </PageTitle>
             <div className="page-grid">
               {state.articles.map((article) => (
                 <article key={article.id} className="page-card">
@@ -408,14 +445,71 @@ export default function App() {
   );
 }
 
-function PageTitle({ title, description, badge, tone = "neutral" }: { title: string; description: string; badge?: string; tone?: "neutral" | "critical" | "ok" }) {
+function PageTitle({
+  title,
+  description,
+  badge,
+  tone = "neutral",
+  children,
+}: {
+  title: string;
+  description: string;
+  badge?: string;
+  tone?: "neutral" | "critical" | "ok";
+  children?: ReactNode;
+}) {
   return (
     <div className="section-title">
       <div>
         <h1>{title}</h1>
         <p>{description}</p>
       </div>
-      {badge && <span className={`pill ${tone}`}>{badge}</span>}
+      <div className="section-actions">
+        {badge && <span className={`pill ${tone}`}>{badge}</span>}
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Pager({
+  page,
+  pageSize,
+  total,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  page: number;
+  pageSize: number;
+  total: number;
+  onPageChange: (value: number) => void;
+  onPageSizeChange: (value: number) => void;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const end = Math.min(total, page * pageSize);
+
+  return (
+    <div className="pager">
+      <label>
+        표시
+        <select value={pageSize} onChange={(event) => onPageSizeChange(Number(event.target.value))}>
+          {pageSizeOptions.map((option) => (
+            <option key={option} value={option}>
+              {option}개
+            </option>
+          ))}
+        </select>
+      </label>
+      <span>
+        {start}-{end} / {total}
+      </span>
+      <button type="button" onClick={() => onPageChange(Math.max(1, page - 1))} disabled={page <= 1}>
+        이전
+      </button>
+      <button type="button" onClick={() => onPageChange(Math.min(totalPages, page + 1))} disabled={page >= totalPages}>
+        다음
+      </button>
     </div>
   );
 }

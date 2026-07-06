@@ -310,6 +310,47 @@ button:disabled {
   margin-bottom: 14px;
 }
 
+.section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  color: #9aa7b5;
+  font-size: 12px;
+}
+
+.pager label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.pager select {
+  min-height: 30px;
+  border: 1px solid #334355;
+  border-radius: 6px;
+  background: #101821;
+  color: #d9e3ec;
+  font: inherit;
+  padding: 0 8px;
+}
+
+.pager button {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
 .page-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
