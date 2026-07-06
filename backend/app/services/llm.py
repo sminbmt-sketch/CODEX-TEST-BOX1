@@ -239,18 +239,20 @@ def _usable_summary(summary: str | None, required_terms: list[str] | None = None
     return _limit_summary_lines(cleaned)
 
 
-def _recent_cutoff() -> datetime:
-    return datetime.now(timezone.utc) - timedelta(days=SUMMARY_RECENT_DAYS)
+def _recent_cutoff(days: int = SUMMARY_RECENT_DAYS) -> datetime:
+    return datetime.now(timezone.utc) - timedelta(days=days)
 
 
-async def summarize_recent_articles(db: Session, limit: int | None = 20) -> tuple[int, int]:
-    cutoff = _recent_cutoff()
+async def summarize_recent_articles(db: Session, limit: int | None = 20, days: int = SUMMARY_RECENT_DAYS, include_existing: bool = False) -> tuple[int, int]:
+    cutoff = _recent_cutoff(days)
     query = (
         select(Article)
         .options(selectinload(Article.source))
         .where(or_(Article.published_at >= cutoff, Article.published_at.is_(None) & (Article.created_at >= cutoff)))
         .order_by(Article.summary.is_not(None), Article.published_at.desc().nullslast(), Article.created_at.desc())
     )
+    if not include_existing:
+        query = query.where(or_(Article.summary_status.is_(None), Article.summary_status != "llm"))
     if limit is not None:
         query = query.limit(limit)
     rows = db.scalars(query).all()
@@ -265,14 +267,16 @@ async def summarize_recent_articles(db: Session, limit: int | None = 20) -> tupl
                 summary = await service.summarize(article.title, body, [article.url])
             except Exception:
                 summary = None
-        article.summary = _usable_summary(summary) or _fallback_article_summary(article)
+        usable_summary = _usable_summary(summary)
+        article.summary = usable_summary or _fallback_article_summary(article)
+        article.summary_status = "llm" if usable_summary else "fallback"
         changed += 1
     db.commit()
     return len(rows), changed
 
 
-async def summarize_recent_vulnerabilities(db: Session, limit: int | None = 20) -> tuple[int, int]:
-    cutoff = _recent_cutoff()
+async def summarize_recent_vulnerabilities(db: Session, limit: int | None = 20, days: int = SUMMARY_RECENT_DAYS, include_existing: bool = False) -> tuple[int, int]:
+    cutoff = _recent_cutoff(days)
     query = (
         select(Vulnerability)
         .where(Vulnerability.published_at >= cutoff)
@@ -283,6 +287,8 @@ async def summarize_recent_vulnerabilities(db: Session, limit: int | None = 20) 
             Vulnerability.epss_score.desc().nullslast(),
         )
     )
+    if not include_existing:
+        query = query.where(or_(Vulnerability.summary_status.is_(None), Vulnerability.summary_status != "llm"))
     if limit is not None:
         query = query.limit(limit)
     rows = db.scalars(query).all()
@@ -303,7 +309,9 @@ async def summarize_recent_vulnerabilities(db: Session, limit: int | None = 20) 
         required_terms = [vulnerability.cve_id]
         if vulnerability.product:
             required_terms.append(vulnerability.product)
-        vulnerability.summary = _usable_summary(summary, required_terms=required_terms) or _fallback_vulnerability_summary(vulnerability)
+        usable_summary = _usable_summary(summary, required_terms=required_terms)
+        vulnerability.summary = usable_summary or _fallback_vulnerability_summary(vulnerability)
+        vulnerability.summary_status = "llm" if usable_summary else "fallback"
         changed += 1
     db.commit()
     return len(rows), changed

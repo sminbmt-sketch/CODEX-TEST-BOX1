@@ -23,13 +23,19 @@ def create_db() -> None:
 
 def _ensure_schema() -> None:
     inspector = inspect(engine)
-    if "vulnerabilities" not in inspector.get_table_names():
+    table_names = inspector.get_table_names()
+    if "vulnerabilities" not in table_names:
         return
 
     vulnerability_columns = {column["name"] for column in inspector.get_columns("vulnerabilities")}
+    article_columns = {column["name"] for column in inspector.get_columns("articles")} if "articles" in table_names else set()
     with engine.begin() as connection:
         if "summary" not in vulnerability_columns:
             connection.execute(text("ALTER TABLE vulnerabilities ADD COLUMN summary TEXT"))
+        if "summary_status" not in vulnerability_columns:
+            connection.execute(text("ALTER TABLE vulnerabilities ADD COLUMN summary_status VARCHAR(32)"))
+        if "summary_status" not in article_columns:
+            connection.execute(text("ALTER TABLE articles ADD COLUMN summary_status VARCHAR(32)"))
 
 
 def get_db() -> Generator[Session, None, None]:

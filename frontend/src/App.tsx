@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { Activity, AlertTriangle, DatabaseZap, ExternalLink, FileText, Radar, RefreshCw, Search, Server, Wifi } from "lucide-react";
+import { DatabaseZap, ExternalLink, FileText, Radar, RefreshCw, Search, Server, Wifi } from "lucide-react";
 import { api, type Article, type DashboardSummary, type Detection, type LlmProvider, type LlmSettings, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
 
 type Route = "dashboard" | "cves" | "security-news" | "tanium-inventory" | "reports" | "settings";
@@ -86,6 +86,8 @@ export default function App() {
   const [newsPageSize, setNewsPageSize] = useState(30);
   const [newsSearch, setNewsSearch] = useState("");
   const [newsSort, setNewsSort] = useState<"date" | "name">("date");
+  const [summaryDays, setSummaryDays] = useState(7);
+  const [includeExistingSummaries, setIncludeExistingSummaries] = useState(false);
   const [llmForm, setLlmForm] = useState({
     provider: "disabled" as LlmProvider,
     baseUrl: "",
@@ -178,6 +180,18 @@ export default function App() {
         error: error instanceof Error ? error.message : "Unknown error",
       }));
     }
+  }
+
+  async function runCveUpdate() {
+    await runAction("CVE Update", async () => {
+      await api.collectNvd();
+      await api.collectCisaKev();
+      await api.collectEpss();
+    });
+  }
+
+  async function runSummariesUpdate() {
+    await runAction("Summaries", () => api.summarizeAll({ days: summaryDays, includeExisting: includeExistingSummaries }));
   }
 
   useEffect(() => {
@@ -317,7 +331,8 @@ export default function App() {
               description="수집한 CVE, KEV, EPSS, 영향 단말 후보를 게시글 형태로 확인합니다."
               badge={`${state.summary?.vulnerability_count ?? state.vulnerabilities.length} CVEs`}
               tone="critical"
-            >
+            />
+            <ListToolbar>
               <ListControls
                 search={cveSearch}
                 searchLabel="CVE 검색"
@@ -341,7 +356,7 @@ export default function App() {
                   setCvePage(1);
                 }}
               />
-            </PageTitle>
+            </ListToolbar>
             <div className="page-grid">
               {state.vulnerabilities.map((item) => (
                 <article key={item.id} className="page-card">
@@ -398,7 +413,8 @@ export default function App() {
               title="Security News"
               description="수집한 보안 뉴스, 사건사고, KISA 공지, 해외 뉴스를 요약 내용과 함께 제공합니다."
               badge={`${state.summary?.article_count ?? state.articles.length} news`}
-            >
+            />
+            <ListToolbar>
               <ListControls
                 search={newsSearch}
                 searchLabel="뉴스 검색"
@@ -422,7 +438,7 @@ export default function App() {
                   setNewsPage(1);
                 }}
               />
-            </PageTitle>
+            </ListToolbar>
             <div className="page-grid">
               {state.articles.map((article) => (
                 <article key={article.id} className="page-card">
@@ -500,6 +516,32 @@ export default function App() {
         {route === "settings" && (
           <section>
             <PageTitle title="Settings" description="수집 주기, LLM 모델, Tanium 연결 설정을 관리하는 영역입니다." />
+            <div className="toolbar settings-top-actions">
+              <button title="Refresh dashboard" onClick={() => void load()} disabled={state.loading}>
+                <RefreshCw size={16} />
+                <span>Refresh</span>
+              </button>
+              <button title="Collect NVD, CISA KEV, and EPSS data" onClick={() => void runCveUpdate()} disabled={Boolean(state.action)}>
+                <DatabaseZap size={16} />
+                <span>CVE Update</span>
+              </button>
+              <button title="Collect security news" onClick={() => void runAction("News", api.collectNews)} disabled={Boolean(state.action)}>
+                <FileText size={16} />
+                <span>News</span>
+              </button>
+              <button title="Sync Tanium endpoint inventory" onClick={() => void runAction("Endpoint sync", api.taniumSyncEndpoints)} disabled={Boolean(state.action)}>
+                <Server size={16} />
+                <span>Endpoints</span>
+              </button>
+              <button title="Analyze CVE impact against Tanium inventory" onClick={() => void runAction("Impact analysis", api.taniumAnalyzeImpact)} disabled={Boolean(state.action)}>
+                <Radar size={16} />
+                <span>Analyze</span>
+              </button>
+              <button title="Run read-only Gateway test" onClick={() => void runAction("Tanium test", api.taniumTest)} disabled={Boolean(state.action)}>
+                <Wifi size={16} />
+                <span>Test Gateway</span>
+              </button>
+            </div>
             <article className="page-card settings-card">
               <header>
                 <div>
@@ -594,44 +636,45 @@ export default function App() {
                 {llmMessage && <strong>{llmMessage}</strong>}
               </div>
             </article>
-            <div className="toolbar">
-              <button title="Refresh dashboard" onClick={() => void load()} disabled={state.loading}>
-                <RefreshCw size={16} />
-                <span>Refresh</span>
-              </button>
-              <button title="Collect NVD CVEs" onClick={() => void runAction("NVD", api.collectNvd)} disabled={Boolean(state.action)}>
-                <DatabaseZap size={16} />
-                <span>NVD</span>
-              </button>
-              <button title="Collect CISA KEV" onClick={() => void runAction("CISA KEV", api.collectCisaKev)} disabled={Boolean(state.action)}>
-                <AlertTriangle size={16} />
-                <span>KEV</span>
-              </button>
-              <button title="Update EPSS scores" onClick={() => void runAction("EPSS", api.collectEpss)} disabled={Boolean(state.action)}>
-                <Activity size={16} />
-                <span>EPSS</span>
-              </button>
-              <button title="Collect security news" onClick={() => void runAction("News", api.collectNews)} disabled={Boolean(state.action)}>
-                <FileText size={16} />
-                <span>News</span>
-              </button>
-              <button title="Translate and summarize news and CVEs from the last 7 days" onClick={() => void runAction("Recent 7d summaries", api.summarizeAll)} disabled={Boolean(state.action)}>
-                <FileText size={16} />
-                <span>7d Summaries</span>
-              </button>
-              <button title="Sync Tanium endpoint inventory" onClick={() => void runAction("Endpoint sync", api.taniumSyncEndpoints)} disabled={Boolean(state.action)}>
-                <Server size={16} />
-                <span>Endpoints</span>
-              </button>
-              <button title="Analyze CVE impact against Tanium inventory" onClick={() => void runAction("Impact analysis", api.taniumAnalyzeImpact)} disabled={Boolean(state.action)}>
-                <Radar size={16} />
-                <span>Analyze</span>
-              </button>
-              <button title="Run read-only Gateway test" onClick={() => void runAction("Tanium test", api.taniumTest)} disabled={Boolean(state.action)}>
-                <Wifi size={16} />
-                <span>Test Gateway</span>
-              </button>
-            </div>
+            <article className="page-card settings-card">
+              <header>
+                <div>
+                  <h3>Summaries</h3>
+                  <p>선택한 기간의 뉴스와 CVE를 LLM으로 번역/요약합니다. 기본값은 기존 요약 완료 항목을 다시 요청하지 않습니다.</p>
+                </div>
+                <span className="pill neutral">{summaryDays} days</span>
+              </header>
+              <div className="settings-form summary-settings-form">
+                <label>
+                  업데이트 기간(최근 N일)
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={summaryDays}
+                    onChange={(event) => setSummaryDays(Number(event.target.value))}
+                  />
+                </label>
+                <label className="check-field">
+                  <input
+                    type="checkbox"
+                    checked={includeExistingSummaries}
+                    onChange={(event) => setIncludeExistingSummaries(event.target.checked)}
+                  />
+                  기존 업데이트 정보 요청
+                </label>
+                <div className="settings-actions">
+                  <button title="Translate and summarize selected period" onClick={() => void runSummariesUpdate()} disabled={Boolean(state.action)}>
+                    <FileText size={16} />
+                    <span>Summaries</span>
+                  </button>
+                </div>
+              </div>
+              <div className="settings-note">
+                <span>{includeExistingSummaries ? "기존 요약 포함" : "요약 완료 항목 제외"}</span>
+                <span>최근 {summaryDays}일 기준</span>
+              </div>
+            </article>
           </section>
         )}
       </section>
@@ -684,6 +727,10 @@ function PageTitle({
       </div>
     </div>
   );
+}
+
+function ListToolbar({ children }: { children: ReactNode }) {
+  return <div className="list-toolbar">{children}</div>;
 }
 
 function ListControls({

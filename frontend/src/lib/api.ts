@@ -131,12 +131,27 @@ type ListParams = {
   sort?: "date" | "name";
 };
 
+type SummaryParams = {
+  days?: number;
+  includeExisting?: boolean;
+  limit?: number;
+};
+
 function listQuery(params?: ListParams) {
   const search = new URLSearchParams();
   if (params?.limit != null) search.set("limit", String(params.limit));
   if (params?.offset != null) search.set("offset", String(params.offset));
   if (params?.q) search.set("q", params.q);
   if (params?.sort) search.set("sort", params.sort);
+  const query = search.toString();
+  return query ? `?${query}` : "";
+}
+
+function summaryQuery(params?: SummaryParams) {
+  const search = new URLSearchParams();
+  if (params?.days != null) search.set("days", String(params.days));
+  if (params?.includeExisting != null) search.set("include_existing", String(params.includeExisting));
+  if (params?.limit != null) search.set("limit", String(params.limit));
   const query = search.toString();
   return query ? `?${query}` : "";
 }
@@ -173,9 +188,9 @@ export const api = {
   taniumAnalyzeImpact: () => request<Record<string, unknown>>("/api/tanium/analyze-impact", { method: "POST" }),
   detections: () => request<Detection[]>("/api/tanium/detections?limit=25"),
   trends: () => request<TrendReport>("/api/summaries/trends?limit=8"),
-  summarizeArticles: () => request<Record<string, unknown>>("/api/summaries/articles?limit=20", { method: "POST" }),
-  summarizeVulnerabilities: () => request<Record<string, unknown>>("/api/summaries/vulnerabilities?limit=20", { method: "POST" }),
-  summarizeAll: () => request<Record<string, unknown>[]>("/api/summaries/all", { method: "POST" }),
+  summarizeArticles: (params?: SummaryParams) => request<Record<string, unknown>>(`/api/summaries/articles${summaryQuery(params ?? { limit: 20 })}`, { method: "POST" }),
+  summarizeVulnerabilities: (params?: SummaryParams) => request<Record<string, unknown>>(`/api/summaries/vulnerabilities${summaryQuery(params ?? { limit: 20 })}`, { method: "POST" }),
+  summarizeAll: (params?: SummaryParams) => request<Record<string, unknown>[]>(`/api/summaries/all${summaryQuery(params)}`, { method: "POST" }),
   collectNvd: () => request("/api/collect/nvd", { method: "POST" }),
   collectCisaKev: () => request("/api/collect/cisa-kev", { method: "POST" }),
   collectEpss: () => request("/api/collect/epss", { method: "POST" }),
