@@ -30,7 +30,10 @@ def _ensure_schema() -> None:
     vulnerability_columns = {column["name"] for column in inspector.get_columns("vulnerabilities")}
     article_columns = {column["name"] for column in inspector.get_columns("articles")} if "articles" in table_names else set()
     endpoint_columns = {column["name"] for column in inspector.get_columns("endpoint_snapshots")} if "endpoint_snapshots" in table_names else set()
+    source_columns = {column["name"] for column in inspector.get_columns("sources")} if "sources" in table_names else set()
     with engine.begin() as connection:
+        if "enabled" not in source_columns:
+            connection.execute(text("ALTER TABLE sources ADD COLUMN enabled BOOLEAN DEFAULT TRUE"))
         if "summary" not in vulnerability_columns:
             connection.execute(text("ALTER TABLE vulnerabilities ADD COLUMN summary TEXT"))
         if "summary_status" not in vulnerability_columns:

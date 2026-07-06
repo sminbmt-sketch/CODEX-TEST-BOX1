@@ -12,7 +12,15 @@ class SourceOut(BaseModel):
     name: str
     kind: str
     url: str | None = None
+    enabled: bool = True
     trust_score: float
+
+
+class SourceUpdate(BaseModel):
+    name: str | None = None
+    kind: str | None = None
+    url: str | None = None
+    enabled: bool | None = None
 
 
 class ArticleOut(BaseModel):

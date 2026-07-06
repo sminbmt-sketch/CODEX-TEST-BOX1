@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Body, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import LlmSetting
+from app.db.models import LlmSetting, Source
 from app.db.session import get_db
-from app.schemas import LlmSettingOut, LlmSettingUpdate, LlmTestResult
+from app.schemas import LlmSettingOut, LlmSettingUpdate, LlmTestResult, SourceOut, SourceUpdate
+from app.services.news_sources import DEFAULT_HTML_SOURCES, DEFAULT_NEWS_FEEDS
 from app.services.llm import LlmRuntimeConfig, SummaryService, default_base_url, default_model, get_llm_setting, resolve_llm_config, sanitize_llm_error
+from app.services.vulnerability_sources import CISA_KEV_URL, EPSS_URL, NVD_CVE_URL
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -21,6 +24,23 @@ def normalize_model(provider: str, model: str | None) -> str:
     if provider == "gemini":
         return MODEL_ALIASES.get(value.lower(), value)
     return value
+
+
+def ensure_default_sources(db: Session) -> None:
+    defaults = [
+        ("NVD", NVD_CVE_URL, "vulnerability"),
+        ("CISA KEV", CISA_KEV_URL, "vulnerability"),
+        ("FIRST EPSS", EPSS_URL, "vulnerability"),
+        *DEFAULT_NEWS_FEEDS,
+        *DEFAULT_HTML_SOURCES,
+    ]
+    for name, url, kind in defaults:
+        source = db.scalar(select(Source).where(Source.name == name))
+        if source is None:
+            db.add(Source(name=name, url=url, kind=kind, license_note="Store metadata, source URL, and generated summaries only.", trust_score=0.7))
+        elif source.url is None:
+            source.url = url
+    db.commit()
 
 
 def _out(setting: LlmSetting | None) -> LlmSettingOut:
@@ -66,6 +86,42 @@ def resolve_llm_config_from_payload(payload: LlmSettingUpdate, saved: LlmSetting
 @router.get("/llm", response_model=LlmSettingOut)
 def get_llm_settings(db: Session = Depends(get_db)) -> LlmSettingOut:
     return _out(get_llm_setting(db))
+
+
+@router.get("/sources", response_model=list[SourceOut])
+def list_sources(db: Session = Depends(get_db)) -> list[SourceOut]:
+    ensure_default_sources(db)
+    rows = db.scalars(select(Source).order_by(Source.kind.asc(), Source.name.asc())).all()
+    return [SourceOut.model_validate(row) for row in rows]
+
+
+@router.put("/sources/{source_id}", response_model=SourceOut)
+def update_source(source_id: int, payload: SourceUpdate, db: Session = Depends(get_db)) -> SourceOut:
+    source = db.get(Source, source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    if payload.name is not None:
+        source.name = payload.name
+    if payload.kind is not None:
+        source.kind = payload.kind
+    if payload.url is not None:
+        source.url = payload.url
+    if payload.enabled is not None:
+        source.enabled = payload.enabled
+    db.commit()
+    db.refresh(source)
+    return SourceOut.model_validate(source)
+
+
+@router.delete("/sources/{source_id}", response_model=SourceOut)
+def disable_source(source_id: int, db: Session = Depends(get_db)) -> SourceOut:
+    source = db.get(Source, source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    source.enabled = False
+    db.commit()
+    db.refresh(source)
+    return SourceOut.model_validate(source)
 
 
 @router.put("/llm", response_model=LlmSettingOut)

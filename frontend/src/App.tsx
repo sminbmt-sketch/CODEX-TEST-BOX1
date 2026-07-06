@@ -1,6 +1,6 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useMemo, useState } from "react";
 import { DatabaseZap, ExternalLink, FileText, Radar, RefreshCw, Search, Server, Wifi } from "lucide-react";
-import { api, type Article, type DashboardSummary, type Detection, type EndpointSnapshot, type LlmProvider, type LlmSettings, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
+import { api, type Article, type DashboardSummary, type Detection, type EndpointSnapshot, type LlmProvider, type LlmSettings, type Source, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
 
 type Route = "dashboard" | "cves" | "security-news" | "tanium-inventory" | "reports" | "settings";
 
@@ -15,6 +15,7 @@ type LoadState = {
   trends?: TrendReport;
   tanium?: TaniumStatus;
   llm?: LlmSettings;
+  sources: Source[];
   loading: boolean;
   error?: string;
   action?: string;
@@ -27,6 +28,7 @@ const emptyState: LoadState = {
   articleTotal: 0,
   inventory: [],
   detections: [],
+  sources: [],
   loading: true,
 };
 
@@ -100,6 +102,8 @@ export default function App() {
   const [newsPageSize, setNewsPageSize] = useState(30);
   const [newsSearch, setNewsSearch] = useState("");
   const [newsSort, setNewsSort] = useState<"date" | "name">("date");
+  const [newsCategory, setNewsCategory] = useState<"news" | "kisa">("news");
+  const [sourceDrafts, setSourceDrafts] = useState<Record<number, { name: string; kind: string; url: string; enabled: boolean }>>({});
   const [summaryDays, setSummaryDays] = useState(7);
   const [includeExistingSummaries, setIncludeExistingSummaries] = useState(false);
   const [llmForm, setLlmForm] = useState({
@@ -117,8 +121,8 @@ export default function App() {
     setState((current) => ({ ...current, loading: true, error: undefined }));
     try {
       const cveParams = { limit: cvePageSize, offset: (cvePage - 1) * cvePageSize, q: cveSearch.trim() || undefined, sort: cveSort };
-      const newsParams = { limit: newsPageSize, offset: (newsPage - 1) * newsPageSize, q: newsSearch.trim() || undefined, sort: newsSort };
-      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm] = await Promise.all([
+      const newsParams = { limit: newsPageSize, offset: (newsPage - 1) * newsPageSize, q: newsSearch.trim() || undefined, sort: newsSort, category: newsCategory };
+      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, sources] = await Promise.all([
         api.summary(),
         api.vulnerabilities(cveParams),
         api.vulnerabilityCount(cveParams),
@@ -129,8 +133,10 @@ export default function App() {
         api.detections(),
         api.trends(),
         api.llmSettings(),
+        api.sources(),
       ]);
-      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, loading: false });
+      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, sources, loading: false });
+      setSourceDrafts(Object.fromEntries(sources.map((source) => [source.id, { name: source.name, kind: source.kind, url: source.url || "", enabled: source.enabled }])));
       setLlmForm((current) => ({
         ...current,
         provider: llm.provider,
@@ -209,6 +215,16 @@ export default function App() {
     await runAction("Summaries", () => api.summarizeAll({ days: summaryDays, includeExisting: includeExistingSummaries }));
   }
 
+  async function saveSource(source: Source) {
+    const draft = sourceDrafts[source.id];
+    if (!draft) return;
+    await runAction(`Save source ${source.name}`, () => api.updateSource(source.id, draft));
+  }
+
+  async function deleteSource(source: Source) {
+    await runAction(`Delete source ${source.name}`, () => api.deleteSource(source.id));
+  }
+
   useEffect(() => {
     const onHashChange = () => setRoute(routeFromHash());
     window.addEventListener("hashchange", onHashChange);
@@ -217,7 +233,7 @@ export default function App() {
 
   useEffect(() => {
     void load();
-  }, [cvePage, cvePageSize, cveSearch, cveSort, newsPage, newsPageSize, newsSearch, newsSort]);
+  }, [cvePage, cvePageSize, cveSearch, cveSort, newsPage, newsPageSize, newsSearch, newsSort, newsCategory]);
 
   const metrics = useMemo(() => {
     const summary = state.summary;
@@ -233,6 +249,9 @@ export default function App() {
       },
     ];
   }, [state.summary, state.tanium]);
+
+  const cveSources = state.sources.filter((source) => ["NVD", "CISA KEV", "FIRST EPSS"].includes(source.name));
+  const newsSources = state.sources.filter((source) => !["NVD", "CISA KEV", "FIRST EPSS"].includes(source.name));
 
   return (
     <main className="ops-app">
@@ -415,9 +434,31 @@ export default function App() {
           <section>
             <PageTitle
               title="Security News"
-              description="수집한 보안 뉴스, 사건사고, KISA 공지, 해외 뉴스를 요약 내용과 함께 제공합니다."
-              badge={`${state.summary?.article_count ?? state.articles.length} news`}
+              description="수집한 보안 뉴스와 KISA 보안 공지를 분리해서 확인합니다."
+              badge={`${state.articleTotal} ${newsCategory === "kisa" ? "KISA notices" : "news"}`}
             />
+            <div className="segmented">
+              <button
+                type="button"
+                className={newsCategory === "news" ? "active" : undefined}
+                onClick={() => {
+                  setNewsCategory("news");
+                  setNewsPage(1);
+                }}
+              >
+                News
+              </button>
+              <button
+                type="button"
+                className={newsCategory === "kisa" ? "active" : undefined}
+                onClick={() => {
+                  setNewsCategory("kisa");
+                  setNewsPage(1);
+                }}
+              >
+                KISA 보안공지
+              </button>
+            </div>
             <ListToolbar>
               <ListControls
                 search={newsSearch}
@@ -545,6 +586,28 @@ export default function App() {
                 <Wifi size={16} />
                 <span>Test Gateway</span>
               </button>
+            </div>
+            <div className="source-settings-grid">
+              <SourceSettingsCard
+                title="CVE Update Sources"
+                description="CVE Update에서 사용하는 NVD, CISA KEV, EPSS 링크입니다."
+                sources={cveSources}
+                drafts={sourceDrafts}
+                setDrafts={setSourceDrafts}
+                onSave={saveSource}
+                onDelete={deleteSource}
+                actionDisabled={Boolean(state.action)}
+              />
+              <SourceSettingsCard
+                title="News Sources"
+                description="Security News와 KISA 보안공지 수집에 사용하는 링크입니다."
+                sources={newsSources}
+                drafts={sourceDrafts}
+                setDrafts={setSourceDrafts}
+                onSave={saveSource}
+                onDelete={deleteSource}
+                actionDisabled={Boolean(state.action)}
+              />
             </div>
             <article className="page-card settings-card">
               <header>
@@ -704,6 +767,85 @@ function llmPayload(form: {
     timeout_seconds: form.timeoutSeconds,
     max_tokens: form.maxTokens,
   };
+}
+
+function SourceSettingsCard({
+  title,
+  description,
+  sources,
+  drafts,
+  setDrafts,
+  onSave,
+  onDelete,
+  actionDisabled,
+}: {
+  title: string;
+  description: string;
+  sources: Source[];
+  drafts: Record<number, { name: string; kind: string; url: string; enabled: boolean }>;
+  setDrafts: Dispatch<SetStateAction<Record<number, { name: string; kind: string; url: string; enabled: boolean }>>>;
+  onSave: (source: Source) => Promise<void>;
+  onDelete: (source: Source) => Promise<void>;
+  actionDisabled: boolean;
+}) {
+  return (
+    <article className="page-card settings-card source-card">
+      <header>
+        <div>
+          <h3>{title}</h3>
+          <p>{description}</p>
+        </div>
+        <span className="pill neutral">{sources.filter((source) => source.enabled).length} active</span>
+      </header>
+      <div className="source-list">
+        {sources.map((source) => {
+          const draft = drafts[source.id] || { name: source.name, kind: source.kind, url: source.url || "", enabled: source.enabled };
+          return (
+            <div key={source.id} className={!draft.enabled ? "source-row disabled" : "source-row"}>
+              <label>
+                Name
+                <input
+                  value={draft.name}
+                  onChange={(event) => setDrafts((current) => ({ ...current, [source.id]: { ...draft, name: event.target.value } }))}
+                />
+              </label>
+              <label>
+                Kind
+                <input
+                  value={draft.kind}
+                  onChange={(event) => setDrafts((current) => ({ ...current, [source.id]: { ...draft, kind: event.target.value } }))}
+                />
+              </label>
+              <label className="source-url-field">
+                URL
+                <input
+                  value={draft.url}
+                  onChange={(event) => setDrafts((current) => ({ ...current, [source.id]: { ...draft, url: event.target.value } }))}
+                />
+              </label>
+              <label className="check-field source-enabled">
+                <input
+                  type="checkbox"
+                  checked={draft.enabled}
+                  onChange={(event) => setDrafts((current) => ({ ...current, [source.id]: { ...draft, enabled: event.target.checked } }))}
+                />
+                Enabled
+              </label>
+              <div className="source-actions">
+                <button type="button" onClick={() => void onSave(source)} disabled={actionDisabled}>
+                  Save
+                </button>
+                <button type="button" onClick={() => void onDelete(source)} disabled={actionDisabled || !source.enabled}>
+                  Delete
+                </button>
+              </div>
+            </div>
+          );
+        })}
+        {!sources.length && <div className="empty block">No configured sources</div>}
+      </div>
+    </article>
+  );
 }
 
 function PageTitle({

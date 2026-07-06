@@ -70,8 +70,10 @@ class LinkListParser(HTMLParser):
 def _ensure_source(db: Session, name: str, kind: str, url: str) -> Source:
     source = db.scalar(select(Source).where(Source.name == name))
     if source:
-        source.kind = kind
-        source.url = url
+        if source.kind != kind:
+            source.kind = kind
+        if source.url is None:
+            source.url = url
         return source
     source = Source(
         name=name,
@@ -112,8 +114,18 @@ def _same_site(base_url: str, target_url: str) -> bool:
     return bool(target.scheme in {"http", "https"} and target.netloc and target.netloc == base.netloc)
 
 
+def _configured_sources(db: Session, defaults: list[tuple[str, str, str]]) -> list[tuple[str, str, str]]:
+    for name, url, kind in defaults:
+        _ensure_source(db, name, kind, url)
+    db.flush()
+    names = [name for name, _, _ in defaults]
+    rows = db.scalars(select(Source).where(Source.name.in_(names), Source.enabled.is_(True))).all()
+    return [(row.name, row.url or "", row.kind) for row in rows if row.url]
+
+
 async def collect_rss_feeds(db: Session, feeds: list[tuple[str, str, str]] | None = None) -> tuple[int, int]:
-    feeds = feeds or DEFAULT_NEWS_FEEDS
+    feeds = feeds or _configured_sources(db, DEFAULT_NEWS_FEEDS)
+    html_sources = _configured_sources(db, DEFAULT_HTML_SOURCES)
     fetched = 0
     changed = 0
 
@@ -152,7 +164,7 @@ async def collect_rss_feeds(db: Session, feeds: list[tuple[str, str, str]] | Non
                 article.tags = []
                 changed += 1
 
-        for name, url, kind in DEFAULT_HTML_SOURCES:
+        for name, url, kind in html_sources:
             source = _ensure_source(db, name, kind, url)
             try:
                 response = await client.get(url)

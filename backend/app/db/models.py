@@ -19,6 +19,7 @@ class Source(Base):
     kind: Mapped[str] = mapped_column(String(50), index=True)
     url: Mapped[str | None] = mapped_column(Text)
     license_note: Mapped[str | None] = mapped_column(Text)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     trust_score: Mapped[float] = mapped_column(Float, default=0.5)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

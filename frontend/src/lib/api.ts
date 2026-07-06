@@ -8,7 +8,15 @@ export type Source = {
   name: string;
   kind: string;
   url?: string | null;
+  enabled: boolean;
   trust_score: number;
+};
+
+export type SourceUpdate = {
+  name?: string | null;
+  kind?: string | null;
+  url?: string | null;
+  enabled?: boolean | null;
 };
 
 export type Article = {
@@ -131,6 +139,7 @@ type ListParams = {
   offset?: number;
   q?: string;
   sort?: "date" | "name";
+  category?: "news" | "kisa";
 };
 
 type SummaryParams = {
@@ -145,6 +154,7 @@ function listQuery(params?: ListParams) {
   if (params?.offset != null) search.set("offset", String(params.offset));
   if (params?.q) search.set("q", params.q);
   if (params?.sort) search.set("sort", params.sort);
+  if (params?.category) search.set("category", params.category);
   const query = search.toString();
   return query ? `?${query}` : "";
 }
@@ -181,6 +191,10 @@ export const api = {
   articleCount: (params?: ListParams) => request<number>(`/api/articles/count${listQuery(params)}`),
   taniumStatus: () => request<TaniumStatus>("/api/tanium/status"),
   llmSettings: () => request<LlmSettings>("/api/settings/llm"),
+  sources: () => request<Source[]>("/api/settings/sources"),
+  updateSource: (id: number, payload: SourceUpdate) =>
+    request<Source>(`/api/settings/sources/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteSource: (id: number) => request<Source>(`/api/settings/sources/${id}`, { method: "DELETE" }),
   updateLlmSettings: (payload: LlmSettingsUpdate) =>
     request<LlmSettings>("/api/settings/llm", { method: "PUT", body: JSON.stringify(payload) }),
   testLlmSettings: (payload?: LlmSettingsUpdate) =>
