@@ -421,9 +421,9 @@ export default function App() {
                 <FileText size={16} />
                 <span>News</span>
               </button>
-              <button title="Generate Korean summaries for all news and CVEs" onClick={() => void runAction("Full summaries", api.summarizeAll)} disabled={Boolean(state.action)}>
+              <button title="Translate and summarize news and CVEs from the last 7 days" onClick={() => void runAction("Recent 7d summaries", api.summarizeAll)} disabled={Boolean(state.action)}>
                 <FileText size={16} />
-                <span>Full Summaries</span>
+                <span>7d Summaries</span>
               </button>
               <button title="Sync Tanium endpoint inventory" onClick={() => void runAction("Endpoint sync", api.taniumSyncEndpoints)} disabled={Boolean(state.action)}>
                 <Server size={16} />

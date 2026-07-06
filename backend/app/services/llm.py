@@ -1,6 +1,7 @@
+from datetime import datetime, timedelta, timezone
 import httpx
 import re
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
@@ -8,6 +9,7 @@ from app.db.models import Article, Vulnerability
 
 THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
 HANGUL_RE = re.compile(r"[가-힣]")
+SUMMARY_RECENT_DAYS = 7
 
 
 class SummaryService:
@@ -22,8 +24,9 @@ class SummaryService:
                     "role": "system",
                     "content": (
                         "You are a Korean security analyst. Always answer in Korean only. "
-                        "Summarize the security issue in 2-4 concise Korean sentences. "
-                        "Use only the provided text. Mention uncertainty. "
+                        "First translate the meaningful English source text into Korean, then provide a concise Korean summary. "
+                        "Write 2-4 Korean sentences focused on security impact and action. "
+                        "Use only the provided text and mention uncertainty when evidence is limited. "
                         "Do not invent affected products or CVEs. "
                         "Do not include chain-of-thought, hidden reasoning, or <think> blocks."
                     ),
@@ -31,7 +34,7 @@ class SummaryService:
                 {
                     "role": "user",
                     "content": (
-                        "아래 내용을 한국어로만 요약하세요.\n\n"
+                        "아래 내용을 한국어로 번역한 뒤, 핵심 보안 이슈를 한국어로만 요약하세요.\n\n"
                         f"Title: {title}\n\nBody:\n{body[:8000]}\n\nSources:\n" + "\n".join(source_urls)
                     ),
                 },
@@ -127,10 +130,16 @@ def _usable_summary(summary: str | None, required_terms: list[str] | None = None
     return cleaned
 
 
+def _recent_cutoff() -> datetime:
+    return datetime.now(timezone.utc) - timedelta(days=SUMMARY_RECENT_DAYS)
+
+
 async def summarize_recent_articles(db: Session, limit: int | None = 20) -> tuple[int, int]:
+    cutoff = _recent_cutoff()
     query = (
         select(Article)
         .options(selectinload(Article.source))
+        .where(or_(Article.published_at >= cutoff, Article.published_at.is_(None) & (Article.created_at >= cutoff)))
         .order_by(Article.summary.is_not(None), Article.published_at.desc().nullslast(), Article.created_at.desc())
     )
     if limit is not None:
@@ -153,11 +162,16 @@ async def summarize_recent_articles(db: Session, limit: int | None = 20) -> tupl
 
 
 async def summarize_recent_vulnerabilities(db: Session, limit: int | None = 20) -> tuple[int, int]:
-    query = select(Vulnerability).order_by(
-        Vulnerability.summary.is_not(None),
-        Vulnerability.kev.desc(),
-        Vulnerability.cvss_score.desc().nullslast(),
-        Vulnerability.epss_score.desc().nullslast(),
+    cutoff = _recent_cutoff()
+    query = (
+        select(Vulnerability)
+        .where(Vulnerability.published_at >= cutoff)
+        .order_by(
+            Vulnerability.summary.is_not(None),
+            Vulnerability.kev.desc(),
+            Vulnerability.cvss_score.desc().nullslast(),
+            Vulnerability.epss_score.desc().nullslast(),
+        )
     )
     if limit is not None:
         query = query.limit(limit)
