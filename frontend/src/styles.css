@@ -503,6 +503,77 @@ button:disabled {
   gap: 8px;
 }
 
+.settings-card {
+  margin-bottom: 14px;
+}
+
+.settings-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 12px;
+  padding: 14px;
+}
+
+.settings-form label {
+  display: grid;
+  gap: 7px;
+  color: #8b98a6;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.settings-form input,
+.settings-form select {
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid #334355;
+  border-radius: 6px;
+  background: #101821;
+  color: #d9e3ec;
+  font: inherit;
+  padding: 0 10px;
+}
+
+.check-field {
+  align-content: center;
+  grid-template-columns: auto 1fr;
+}
+
+.check-field input {
+  width: 16px;
+  min-height: 16px;
+  padding: 0;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+}
+
+.settings-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  border-top: 1px solid #263240;
+  padding: 12px 14px;
+  color: #9aa7b5;
+  font-size: 12px;
+}
+
+.settings-note span,
+.settings-note strong {
+  border: 1px solid #304153;
+  border-radius: 999px;
+  padding: 5px 9px;
+}
+
+.settings-note strong {
+  color: #91e7b5;
+  font-weight: 760;
+}
+
 .placeholder {
   padding: 18px;
   color: #9aa7b5;
@@ -581,6 +652,7 @@ button:disabled {
 
   .nav,
   .metrics,
+  .settings-form,
   .stat-grid {
     grid-template-columns: 1fr;
   }

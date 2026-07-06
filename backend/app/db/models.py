@@ -108,3 +108,16 @@ class AuditLog(Base):
     target: Mapped[str | None] = mapped_column(String(255), index=True)
     detail: Mapped[dict | list | None] = mapped_column(JsonType)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class LlmSetting(Base):
+    __tablename__ = "llm_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), default="disabled", index=True)
+    base_url: Mapped[str | None] = mapped_column(Text)
+    model: Mapped[str | None] = mapped_column(String(200))
+    api_key: Mapped[str | None] = mapped_column(Text)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=180)
+    max_tokens: Mapped[int] = mapped_column(Integer, default=512)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

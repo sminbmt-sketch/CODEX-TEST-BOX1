@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Activity, AlertTriangle, DatabaseZap, ExternalLink, FileText, Radar, RefreshCw, Search, Server, Wifi } from "lucide-react";
-import { api, type Article, type DashboardSummary, type Detection, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
+import { api, type Article, type DashboardSummary, type Detection, type LlmProvider, type LlmSettings, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
 
 type Route = "dashboard" | "cves" | "security-news" | "tanium-inventory" | "reports" | "settings";
 
@@ -13,6 +13,7 @@ type LoadState = {
   detections: Detection[];
   trends?: TrendReport;
   tanium?: TaniumStatus;
+  llm?: LlmSettings;
   loading: boolean;
   error?: string;
   action?: string;
@@ -37,6 +38,13 @@ const navItems: { route: Route; label: string }[] = [
 ];
 
 const pageSizeOptions = [10, 30, 50, 100];
+const llmDefaults: Record<LlmProvider, { baseUrl: string; model: string }> = {
+  disabled: { baseUrl: "", model: "" },
+  ollama: { baseUrl: "http://localhost:11434/v1", model: "qwen2.5:1.5b" },
+  openai: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini" },
+  gemini: { baseUrl: "https://generativelanguage.googleapis.com/v1beta", model: "gemini-1.5-flash" },
+  anthropic: { baseUrl: "https://api.anthropic.com/v1", model: "claude-3-5-haiku-latest" },
+};
 
 function routeFromHash(): Route {
   const value = window.location.hash.replace(/^#\/?/, "");
@@ -78,13 +86,23 @@ export default function App() {
   const [newsPageSize, setNewsPageSize] = useState(30);
   const [newsSearch, setNewsSearch] = useState("");
   const [newsSort, setNewsSort] = useState<"date" | "name">("date");
+  const [llmForm, setLlmForm] = useState({
+    provider: "disabled" as LlmProvider,
+    baseUrl: "",
+    model: "",
+    apiKey: "",
+    clearApiKey: false,
+    timeoutSeconds: 180,
+    maxTokens: 512,
+  });
+  const [llmMessage, setLlmMessage] = useState<string | undefined>();
 
   async function load() {
     setState((current) => ({ ...current, loading: true, error: undefined }));
     try {
       const cveParams = { limit: cvePageSize, offset: (cvePage - 1) * cvePageSize, q: cveSearch.trim() || undefined, sort: cveSort };
       const newsParams = { limit: newsPageSize, offset: (newsPage - 1) * newsPageSize, q: newsSearch.trim() || undefined, sort: newsSort };
-      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, detections, trends] = await Promise.all([
+      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, detections, trends, llm] = await Promise.all([
         api.summary(),
         api.vulnerabilities(cveParams),
         api.vulnerabilityCount(cveParams),
@@ -93,12 +111,56 @@ export default function App() {
         api.taniumStatus(),
         api.detections(),
         api.trends(),
+        api.llmSettings(),
       ]);
-      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, detections, trends, loading: false });
+      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, detections, trends, llm, loading: false });
+      setLlmForm((current) => ({
+        ...current,
+        provider: llm.provider,
+        baseUrl: llm.base_url || "",
+        model: llm.model || "",
+        apiKey: "",
+        clearApiKey: false,
+        timeoutSeconds: llm.timeout_seconds,
+        maxTokens: llm.max_tokens,
+      }));
     } catch (error) {
       setState((current) => ({
         ...current,
         loading: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      }));
+    }
+  }
+
+  async function saveLlmSettings() {
+    setState((current) => ({ ...current, action: "Save LLM settings", error: undefined }));
+    setLlmMessage(undefined);
+    try {
+      const updated = await api.updateLlmSettings(llmPayload(llmForm));
+      setState((current) => ({ ...current, llm: updated, action: undefined }));
+      setLlmForm((current) => ({ ...current, apiKey: "", clearApiKey: false }));
+      setLlmMessage("LLM 설정을 저장했습니다.");
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        action: undefined,
+        error: error instanceof Error ? error.message : "Unknown error",
+      }));
+    }
+  }
+
+  async function testLlmSettings() {
+    setState((current) => ({ ...current, action: "Test LLM", error: undefined }));
+    setLlmMessage(undefined);
+    try {
+      const result = await api.testLlmSettings(llmPayload(llmForm));
+      setState((current) => ({ ...current, action: undefined }));
+      setLlmMessage(`${result.ok ? "연결 성공" : "연결 실패"}: ${result.message}`);
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        action: undefined,
         error: error instanceof Error ? error.message : "Unknown error",
       }));
     }
@@ -438,6 +500,100 @@ export default function App() {
         {route === "settings" && (
           <section>
             <PageTitle title="Settings" description="수집 주기, LLM 모델, Tanium 연결 설정을 관리하는 영역입니다." />
+            <article className="page-card settings-card">
+              <header>
+                <div>
+                  <h3>LLM Provider</h3>
+                  <p>로컬 LLM 성능 저하 시 OpenAI, Gemini, Claude API로 요약 기능을 대체합니다.</p>
+                </div>
+                <span className={state.llm?.provider === "disabled" ? "pill neutral" : "pill ok"}>
+                  {state.llm?.provider === "disabled" ? "Disabled" : state.llm?.provider || "Loading"}
+                </span>
+              </header>
+              <div className="settings-form">
+                <label>
+                  Provider
+                  <select
+                    value={llmForm.provider}
+                    onChange={(event) => {
+                      const provider = event.target.value as LlmProvider;
+                      setLlmForm((current) => ({
+                        ...current,
+                        provider,
+                        baseUrl: llmDefaults[provider].baseUrl,
+                        model: llmDefaults[provider].model,
+                      }));
+                    }}
+                  >
+                    <option value="disabled">Disabled</option>
+                    <option value="ollama">Local Ollama</option>
+                    <option value="openai">ChatGPT / OpenAI API</option>
+                    <option value="gemini">Gemini API</option>
+                    <option value="anthropic">Claude / Anthropic API</option>
+                  </select>
+                </label>
+                <label>
+                  Base URL
+                  <input value={llmForm.baseUrl} placeholder={llmDefaults[llmForm.provider].baseUrl} onChange={(event) => setLlmForm((current) => ({ ...current, baseUrl: event.target.value }))} />
+                </label>
+                <label>
+                  Model
+                  <input value={llmForm.model} placeholder={llmDefaults[llmForm.provider].model} onChange={(event) => setLlmForm((current) => ({ ...current, model: event.target.value }))} />
+                </label>
+                <label>
+                  API Key
+                  <input
+                    type="password"
+                    value={llmForm.apiKey}
+                    placeholder={state.llm?.has_api_key ? "저장된 키 유지" : "API 키 입력"}
+                    onChange={(event) => setLlmForm((current) => ({ ...current, apiKey: event.target.value, clearApiKey: false }))}
+                  />
+                </label>
+                <label>
+                  Timeout
+                  <input
+                    type="number"
+                    min={30}
+                    max={600}
+                    value={llmForm.timeoutSeconds}
+                    onChange={(event) => setLlmForm((current) => ({ ...current, timeoutSeconds: Number(event.target.value) }))}
+                  />
+                </label>
+                <label>
+                  Max tokens
+                  <input
+                    type="number"
+                    min={64}
+                    max={4096}
+                    value={llmForm.maxTokens}
+                    onChange={(event) => setLlmForm((current) => ({ ...current, maxTokens: Number(event.target.value) }))}
+                  />
+                </label>
+                <label className="check-field">
+                  <input
+                    type="checkbox"
+                    checked={llmForm.clearApiKey}
+                    onChange={(event) => setLlmForm((current) => ({ ...current, clearApiKey: event.target.checked, apiKey: event.target.checked ? "" : current.apiKey }))}
+                  />
+                  저장된 API Key 삭제
+                </label>
+                <div className="settings-actions">
+                  <button title="Save LLM provider settings" onClick={() => void saveLlmSettings()} disabled={Boolean(state.action)}>
+                    <DatabaseZap size={16} />
+                    <span>Save LLM</span>
+                  </button>
+                  <button title="Test selected LLM provider" onClick={() => void testLlmSettings()} disabled={Boolean(state.action) || llmForm.provider === "disabled"}>
+                    <Radar size={16} />
+                    <span>Test LLM</span>
+                  </button>
+                </div>
+              </div>
+              <div className="settings-note">
+                <span>Source: {state.llm?.source || "-"}</span>
+                <span>API Key: {state.llm?.has_api_key ? "Stored" : "Not set"}</span>
+                {llmMessage && <strong>{llmMessage}</strong>}
+              </div>
+            </article>
             <div className="toolbar">
               <button title="Refresh dashboard" onClick={() => void load()} disabled={state.loading}>
                 <RefreshCw size={16} />
@@ -481,6 +637,26 @@ export default function App() {
       </section>
     </main>
   );
+}
+
+function llmPayload(form: {
+  provider: LlmProvider;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+  clearApiKey: boolean;
+  timeoutSeconds: number;
+  maxTokens: number;
+}) {
+  return {
+    provider: form.provider,
+    base_url: form.baseUrl || llmDefaults[form.provider].baseUrl || null,
+    model: form.model || llmDefaults[form.provider].model || null,
+    api_key: form.apiKey || null,
+    clear_api_key: form.clearApiKey,
+    timeout_seconds: form.timeoutSeconds,
+    max_tokens: form.maxTokens,
+  };
 }
 
 function PageTitle({

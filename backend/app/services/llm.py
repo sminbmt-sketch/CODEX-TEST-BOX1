@@ -1,60 +1,160 @@
 from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
 import httpx
 import re
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
-from app.db.models import Article, Vulnerability
+from app.db.models import Article, LlmSetting, Vulnerability
 
 THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
 HANGUL_RE = re.compile(r"[가-힣]")
 SUMMARY_RECENT_DAYS = 7
+DEFAULT_LLM_BASE_URLS = {
+    "ollama": "http://localhost:11434/v1",
+    "openai": "https://api.openai.com/v1",
+    "gemini": "https://generativelanguage.googleapis.com/v1beta",
+    "anthropic": "https://api.anthropic.com/v1",
+}
+DEFAULT_LLM_MODELS = {
+    "ollama": "qwen2.5:1.5b",
+    "openai": "gpt-4o-mini",
+    "gemini": "gemini-1.5-flash",
+    "anthropic": "claude-3-5-haiku-latest",
+}
+
+
+@dataclass(frozen=True)
+class LlmRuntimeConfig:
+    provider: str
+    base_url: str
+    model: str
+    api_key: str | None
+    timeout_seconds: int
+    max_tokens: int
+
+
+def default_base_url(provider: str) -> str:
+    return DEFAULT_LLM_BASE_URLS.get(provider, settings.llm_base_url)
+
+
+def default_model(provider: str) -> str:
+    return DEFAULT_LLM_MODELS.get(provider, settings.llm_model)
+
+
+def get_llm_setting(db: Session) -> LlmSetting | None:
+    return db.scalar(select(LlmSetting).order_by(LlmSetting.id.asc()).limit(1))
+
+
+def resolve_llm_config(db: Session | None = None) -> LlmRuntimeConfig:
+    row = get_llm_setting(db) if db is not None else None
+    provider = row.provider if row else settings.llm_provider
+    provider = provider or "disabled"
+    return LlmRuntimeConfig(
+        provider=provider,
+        base_url=(row.base_url if row and row.base_url else default_base_url(provider)),
+        model=(row.model if row and row.model else default_model(provider)),
+        api_key=(row.api_key if row else settings.llm_api_key),
+        timeout_seconds=(row.timeout_seconds if row else settings.llm_timeout_seconds),
+        max_tokens=(row.max_tokens if row else settings.llm_max_tokens),
+    )
 
 
 class SummaryService:
+    def __init__(self, config: LlmRuntimeConfig):
+        self.config = config
+
     async def summarize(self, title: str, body: str, source_urls: list[str]) -> str | None:
-        if settings.llm_provider == "disabled":
+        if self.config.provider == "disabled":
             return None
 
+        system_prompt = (
+            "You are a Korean security analyst. Always answer in Korean only. "
+            "First translate the meaningful English source text into Korean, then provide a concise Korean summary. "
+            "Write 2-4 Korean sentences focused on security impact and action. "
+            "Use only the provided text and mention uncertainty when evidence is limited. "
+            "Do not invent affected products or CVEs. "
+            "Do not include chain-of-thought, hidden reasoning, or <think> blocks."
+        )
+        user_prompt = (
+            "아래 내용을 한국어로 번역한 뒤, 핵심 보안 이슈를 한국어로만 요약하세요.\n\n"
+            f"Title: {title}\n\nBody:\n{body[:8000]}\n\nSources:\n" + "\n".join(source_urls)
+        )
+        if self.config.provider in {"ollama", "openai"}:
+            return await self._chat_completions(system_prompt, user_prompt)
+        if self.config.provider == "gemini":
+            return await self._gemini(system_prompt, user_prompt)
+        if self.config.provider == "anthropic":
+            return await self._anthropic(system_prompt, user_prompt)
+        return None
+
+    async def _chat_completions(self, system_prompt: str, user_prompt: str) -> str:
         payload = {
-            "model": settings.llm_model,
+            "model": self.config.model,
             "messages": [
                 {
                     "role": "system",
-                    "content": (
-                        "You are a Korean security analyst. Always answer in Korean only. "
-                        "First translate the meaningful English source text into Korean, then provide a concise Korean summary. "
-                        "Write 2-4 Korean sentences focused on security impact and action. "
-                        "Use only the provided text and mention uncertainty when evidence is limited. "
-                        "Do not invent affected products or CVEs. "
-                        "Do not include chain-of-thought, hidden reasoning, or <think> blocks."
-                    ),
+                    "content": system_prompt,
                 },
                 {
                     "role": "user",
-                    "content": (
-                        "아래 내용을 한국어로 번역한 뒤, 핵심 보안 이슈를 한국어로만 요약하세요.\n\n"
-                        f"Title: {title}\n\nBody:\n{body[:8000]}\n\nSources:\n" + "\n".join(source_urls)
-                    ),
+                    "content": user_prompt,
                 },
             ],
             "temperature": 0.2,
-            "max_tokens": settings.llm_max_tokens,
+            "max_tokens": self.config.max_tokens,
         }
         headers = {"Content-Type": "application/json"}
-        if settings.llm_api_key:
-            headers["Authorization"] = f"Bearer {settings.llm_api_key}"
+        if self.config.api_key:
+            headers["Authorization"] = f"Bearer {self.config.api_key}"
 
-        async with httpx.AsyncClient(timeout=settings.llm_timeout_seconds) as client:
+        async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:
             response = await client.post(
-                f"{settings.llm_base_url.rstrip('/')}/chat/completions",
+                f"{self.config.base_url.rstrip('/')}/chat/completions",
                 json=payload,
                 headers=headers,
             )
             response.raise_for_status()
             data = response.json()
             content = data["choices"][0]["message"]["content"]
+            return THINK_BLOCK_RE.sub("", content).strip()
+
+    async def _gemini(self, system_prompt: str, user_prompt: str) -> str:
+        payload = {
+            "systemInstruction": {"parts": [{"text": system_prompt}]},
+            "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+            "generationConfig": {"temperature": 0.2, "maxOutputTokens": self.config.max_tokens},
+        }
+        url = f"{self.config.base_url.rstrip('/')}/models/{self.config.model}:generateContent"
+        params = {"key": self.config.api_key} if self.config.api_key else None
+        async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:
+            response = await client.post(url, json=payload, params=params)
+            response.raise_for_status()
+            data = response.json()
+            parts = data["candidates"][0]["content"]["parts"]
+            content = "\n".join(part.get("text", "") for part in parts)
+            return THINK_BLOCK_RE.sub("", content).strip()
+
+    async def _anthropic(self, system_prompt: str, user_prompt: str) -> str:
+        payload = {
+            "model": self.config.model,
+            "system": system_prompt,
+            "messages": [{"role": "user", "content": user_prompt}],
+            "temperature": 0.2,
+            "max_tokens": self.config.max_tokens,
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "anthropic-version": "2023-06-01",
+        }
+        if self.config.api_key:
+            headers["x-api-key"] = self.config.api_key
+        async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:
+            response = await client.post(f"{self.config.base_url.rstrip('/')}/messages", json=payload, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            content = "\n".join(part.get("text", "") for part in data.get("content", []) if part.get("type") == "text")
             return THINK_BLOCK_RE.sub("", content).strip()
 
 
@@ -146,11 +246,12 @@ async def summarize_recent_articles(db: Session, limit: int | None = 20) -> tupl
         query = query.limit(limit)
     rows = db.scalars(query).all()
     changed = 0
-    service = SummaryService()
+    llm_config = resolve_llm_config(db)
+    service = SummaryService(llm_config)
     for article in rows:
         body = article.raw_excerpt or article.title
         summary = None
-        if settings.llm_provider != "disabled":
+        if llm_config.provider != "disabled":
             try:
                 summary = await service.summarize(article.title, body, [article.url])
             except Exception:
@@ -177,10 +278,11 @@ async def summarize_recent_vulnerabilities(db: Session, limit: int | None = 20) 
         query = query.limit(limit)
     rows = db.scalars(query).all()
     changed = 0
-    service = SummaryService()
+    llm_config = resolve_llm_config(db)
+    service = SummaryService(llm_config)
     for vulnerability in rows:
         summary = None
-        if settings.llm_provider != "disabled":
+        if llm_config.provider != "disabled":
             try:
                 summary = await service.summarize(
                     vulnerability.title or vulnerability.cve_id,

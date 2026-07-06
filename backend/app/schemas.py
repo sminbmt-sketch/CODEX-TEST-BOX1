@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -133,3 +135,33 @@ class TaniumStatus(BaseModel):
 class TaniumGraphQLRequest(BaseModel):
     query: str
     variables: dict | None = None
+
+
+LlmProvider = Literal["disabled", "ollama", "openai", "gemini", "anthropic"]
+
+
+class LlmSettingOut(BaseModel):
+    provider: LlmProvider
+    base_url: str | None = None
+    model: str | None = None
+    timeout_seconds: int = 180
+    max_tokens: int = 512
+    has_api_key: bool = False
+    source: str = "runtime"
+
+
+class LlmSettingUpdate(BaseModel):
+    provider: LlmProvider
+    base_url: str | None = None
+    model: str | None = None
+    api_key: str | None = None
+    clear_api_key: bool = False
+    timeout_seconds: int = Field(default=180, ge=30, le=600)
+    max_tokens: int = Field(default=512, ge=64, le=4096)
+
+
+class LlmTestResult(BaseModel):
+    ok: bool
+    provider: str
+    model: str | None = None
+    message: str

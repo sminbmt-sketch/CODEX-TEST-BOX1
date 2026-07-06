@@ -95,6 +95,35 @@ export type TaniumStatus = {
   message: string;
 };
 
+export type LlmProvider = "disabled" | "ollama" | "openai" | "gemini" | "anthropic";
+
+export type LlmSettings = {
+  provider: LlmProvider;
+  base_url?: string | null;
+  model?: string | null;
+  timeout_seconds: number;
+  max_tokens: number;
+  has_api_key: boolean;
+  source: string;
+};
+
+export type LlmSettingsUpdate = {
+  provider: LlmProvider;
+  base_url?: string | null;
+  model?: string | null;
+  api_key?: string | null;
+  clear_api_key?: boolean;
+  timeout_seconds: number;
+  max_tokens: number;
+};
+
+export type LlmTestResult = {
+  ok: boolean;
+  provider: string;
+  model?: string | null;
+  message: string;
+};
+
 type ListParams = {
   limit?: number;
   offset?: number;
@@ -134,6 +163,11 @@ export const api = {
   articles: (params?: ListParams) => request<Article[]>(`/api/articles${listQuery(params ?? { limit: 25 })}`),
   articleCount: (params?: ListParams) => request<number>(`/api/articles/count${listQuery(params)}`),
   taniumStatus: () => request<TaniumStatus>("/api/tanium/status"),
+  llmSettings: () => request<LlmSettings>("/api/settings/llm"),
+  updateLlmSettings: (payload: LlmSettingsUpdate) =>
+    request<LlmSettings>("/api/settings/llm", { method: "PUT", body: JSON.stringify(payload) }),
+  testLlmSettings: (payload?: LlmSettingsUpdate) =>
+    request<LlmTestResult>("/api/settings/llm/test", { method: "POST", body: payload ? JSON.stringify(payload) : undefined }),
   taniumTest: () => request<Record<string, unknown>>("/api/tanium/test", { method: "POST" }),
   taniumSyncEndpoints: () => request<Record<string, unknown>>("/api/tanium/sync-endpoints", { method: "POST" }),
   taniumAnalyzeImpact: () => request<Record<string, unknown>>("/api/tanium/analyze-impact", { method: "POST" }),
