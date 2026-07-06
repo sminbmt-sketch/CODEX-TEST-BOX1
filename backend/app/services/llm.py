@@ -89,14 +89,14 @@ class SummaryService:
 
         system_prompt = (
             "You are a Korean security analyst. Always answer in Korean only. "
-            "First translate the meaningful English source text into Korean, then provide a concise Korean summary. "
-            "Write 2-4 Korean sentences focused on security impact and action. "
+            "First translate the meaningful English source text into Korean, then summarize the translated content. "
+            "Write a 1-5 line Korean summary focused on security impact and action. "
             "Use only the provided text and mention uncertainty when evidence is limited. "
             "Do not invent affected products or CVEs. "
             "Do not include chain-of-thought, hidden reasoning, or <think> blocks."
         )
         user_prompt = (
-            "아래 내용을 한국어로 번역한 뒤, 핵심 보안 이슈를 한국어로만 요약하세요.\n\n"
+            "아래 영문 내용을 먼저 한국어로 번역한 뒤, 번역한 내용을 기반으로 핵심 보안 이슈를 1~5줄로 요약하세요.\n\n"
             f"Title: {title}\n\nBody:\n{body[:8000]}\n\nSources:\n" + "\n".join(source_urls)
         )
         if self.config.provider in {"ollama", "openai"}:
@@ -207,33 +207,24 @@ def _has_korean_text(value: str | None) -> bool:
     return len(HANGUL_RE.findall(value)) >= 12
 
 
+def _limit_summary_lines(value: str, max_lines: int = 5) -> str:
+    lines = [line.strip(" -\t") for line in value.splitlines() if line.strip()]
+    if not lines:
+        lines = [value.strip()]
+    return "\n".join(lines[:max_lines]).strip()
+
+
 def _fallback_article_summary(article: Article) -> str:
-    source_name = article.source.name if article.source else "수집원"
-    excerpt = _compact(article.raw_excerpt, 450)
-    if excerpt and _has_korean_text(excerpt):
-        return f"{source_name}에서 수집된 보안 이슈입니다. 핵심 제목은 '{article.title}'이며, 원문 요약 근거는 다음과 같습니다: {excerpt}"
+    excerpt = _compact(article.raw_excerpt, 700)
     if excerpt:
-        return f"{source_name}에서 수집된 영문 보안 이슈입니다. 핵심 제목은 '{article.title}'이며, 상세 내용은 원문 링크 확인이 필요합니다."
-    return f"{source_name}에서 수집된 보안 이슈입니다. 현재 확보된 근거는 제목과 원문 링크이며, 상세 판단은 원문 확인이 필요합니다."
+        return excerpt
+    return article.title
 
 
 def _fallback_vulnerability_summary(vulnerability: Vulnerability) -> str:
-    parts = [f"{vulnerability.cve_id}는"]
-    if vulnerability.vendor or vulnerability.product:
-        parts.append(f"{' / '.join(value for value in (vulnerability.vendor, vulnerability.product) if value)} 관련 취약점입니다.")
-    else:
-        parts.append("제품 식별 정보가 제한적인 취약점입니다.")
-    if vulnerability.cvss_severity or vulnerability.cvss_score:
-        parts.append(f"CVSS는 {vulnerability.cvss_severity or '-'} {vulnerability.cvss_score or '-'}입니다.")
-    if vulnerability.epss_score is not None:
-        parts.append(f"EPSS는 {round(vulnerability.epss_score * 100, 2)}%입니다.")
-    if vulnerability.kev:
-        parts.append("CISA KEV에 포함되어 실제 악용 이력이 있는 항목으로 우선 확인이 필요합니다.")
-    if vulnerability.description and _has_korean_text(vulnerability.description):
-        parts.append(f"설명: {_compact(vulnerability.description, 450)}")
-    elif vulnerability.description:
-        parts.append("영문 원문 설명이 제공된 항목으로, 상세 영향은 원문 링크 확인이 필요합니다.")
-    return " ".join(parts)
+    if vulnerability.description:
+        return _compact(vulnerability.description, 700)
+    return vulnerability.title or vulnerability.cve_id
 
 
 def _usable_summary(summary: str | None, required_terms: list[str] | None = None) -> str | None:
@@ -245,7 +236,7 @@ def _usable_summary(summary: str | None, required_terms: list[str] | None = None
     lowered = cleaned.lower()
     if required_terms and not any(term.lower() in lowered for term in required_terms):
         return None
-    return cleaned
+    return _limit_summary_lines(cleaned)
 
 
 def _recent_cutoff() -> datetime:

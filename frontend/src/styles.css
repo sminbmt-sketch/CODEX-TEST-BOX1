@@ -302,6 +302,12 @@ button:disabled {
   line-height: 1.5;
 }
 
+.brief p,
+.post p,
+.cve-row span:last-child {
+  white-space: pre-line;
+}
+
 .section-title {
   display: flex;
   align-items: flex-end;

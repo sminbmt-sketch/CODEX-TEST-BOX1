@@ -269,7 +269,7 @@ export default function App() {
                     <span>CVE</span>
                     <span>KEV/Severity</span>
                     <span>EPSS</span>
-                    <span>한글 요약</span>
+                    <span>요약 내용</span>
                   </div>
                   {(state.summary?.top_risks || []).slice(0, 4).map((item) => (
                     <div key={item.id} className="cve-row">
@@ -376,7 +376,7 @@ export default function App() {
                       </div>
                     </div>
                     <article className="post">
-                      <h4>한글 요약</h4>
+                      <h4>요약 내용</h4>
                       <p>{vulnerabilitySummary(item)}</p>
                       <div className="meta">
                         {item.vendor && <span>{item.vendor}</span>}
@@ -396,7 +396,7 @@ export default function App() {
           <section>
             <PageTitle
               title="Security News"
-              description="수집한 보안 뉴스, 사건사고, KISA 공지, 해외 뉴스를 한글 요약과 함께 제공합니다."
+              description="수집한 보안 뉴스, 사건사고, KISA 공지, 해외 뉴스를 요약 내용과 함께 제공합니다."
               badge={`${state.summary?.article_count ?? state.articles.length} news`}
             >
               <ListControls
@@ -441,8 +441,8 @@ export default function App() {
                   </header>
                   <div className="body">
                     <article className="post">
-                      <h4>한글 요약</h4>
-                      <p>{article.summary || article.raw_excerpt || "요약 생성 전입니다. 원문 링크 확인이 필요합니다."}</p>
+                      <h4>요약 내용</h4>
+                      <p>{article.summary || article.raw_excerpt || "원문 링크 확인이 필요합니다."}</p>
                       <div className="meta">
                         <span>원문 링크</span>
                         <span>RSS</span>
