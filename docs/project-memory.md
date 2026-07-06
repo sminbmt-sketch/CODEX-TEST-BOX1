@@ -82,3 +82,4 @@ Build a Web + Dashboard system that collects security news and vulnerability dat
 - 2026-07-03: Extended local LLM summaries to CVE data. Dashboard summaries now generate Korean news and vulnerability summaries together and avoid displaying raw English descriptions as fallback summary text.
 - 2026-07-06: Confirmed the A operations-console UI direction and applied it to the React app as a dark, hash-routed dashboard with separate CVE, Security News, Tanium Inventory, Reports, and Settings views.
 - 2026-07-06: Added offset-based pagination to CVE and Security News list APIs. The React CVE and Security News pages now support 10/30/50/100 item page sizes with previous/next navigation while Dashboard keeps summary counts.
+- 2026-07-06: Removed the frontend `limit=2` cap from full summaries. `/api/summaries/all` now accepts an optional limit and runs without a limit when omitted, prioritizing rows without summaries first.

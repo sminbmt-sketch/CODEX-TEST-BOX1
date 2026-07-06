@@ -135,7 +135,7 @@ export const api = {
   trends: () => request<TrendReport>("/api/summaries/trends?limit=8"),
   summarizeArticles: () => request<Record<string, unknown>>("/api/summaries/articles?limit=20", { method: "POST" }),
   summarizeVulnerabilities: () => request<Record<string, unknown>>("/api/summaries/vulnerabilities?limit=20", { method: "POST" }),
-  summarizeAll: () => request<Record<string, unknown>[]>("/api/summaries/all?limit=2", { method: "POST" }),
+  summarizeAll: () => request<Record<string, unknown>[]>("/api/summaries/all", { method: "POST" }),
   collectNvd: () => request("/api/collect/nvd", { method: "POST" }),
   collectCisaKev: () => request("/api/collect/cisa-kev", { method: "POST" }),
   collectEpss: () => request("/api/collect/epss", { method: "POST" }),

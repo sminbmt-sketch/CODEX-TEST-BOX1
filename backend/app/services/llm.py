@@ -127,13 +127,15 @@ def _usable_summary(summary: str | None, required_terms: list[str] | None = None
     return cleaned
 
 
-async def summarize_recent_articles(db: Session, limit: int = 20) -> tuple[int, int]:
-    rows = db.scalars(
+async def summarize_recent_articles(db: Session, limit: int | None = 20) -> tuple[int, int]:
+    query = (
         select(Article)
         .options(selectinload(Article.source))
-        .order_by(Article.published_at.desc().nullslast(), Article.created_at.desc())
-        .limit(limit)
-    ).all()
+        .order_by(Article.summary.is_not(None), Article.published_at.desc().nullslast(), Article.created_at.desc())
+    )
+    if limit is not None:
+        query = query.limit(limit)
+    rows = db.scalars(query).all()
     changed = 0
     service = SummaryService()
     for article in rows:
@@ -150,12 +152,16 @@ async def summarize_recent_articles(db: Session, limit: int = 20) -> tuple[int, 
     return len(rows), changed
 
 
-async def summarize_recent_vulnerabilities(db: Session, limit: int = 20) -> tuple[int, int]:
-    rows = db.scalars(
-        select(Vulnerability)
-        .order_by(Vulnerability.kev.desc(), Vulnerability.cvss_score.desc().nullslast(), Vulnerability.epss_score.desc().nullslast())
-        .limit(limit)
-    ).all()
+async def summarize_recent_vulnerabilities(db: Session, limit: int | None = 20) -> tuple[int, int]:
+    query = select(Vulnerability).order_by(
+        Vulnerability.summary.is_not(None),
+        Vulnerability.kev.desc(),
+        Vulnerability.cvss_score.desc().nullslast(),
+        Vulnerability.epss_score.desc().nullslast(),
+    )
+    if limit is not None:
+        query = query.limit(limit)
+    rows = db.scalars(query).all()
     changed = 0
     service = SummaryService()
     for vulnerability in rows:

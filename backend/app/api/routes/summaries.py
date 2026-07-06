@@ -34,7 +34,7 @@ async def summarize_vulnerabilities(
 
 @router.post("/all", response_model=list[SummaryRunResult])
 async def summarize_all(
-    limit: int = Query(default=10, ge=1, le=50),
+    limit: int | None = Query(default=None, ge=1, le=5000),
     db: Session = Depends(get_db),
 ) -> list[SummaryRunResult]:
     try:
