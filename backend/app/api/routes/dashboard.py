@@ -19,7 +19,7 @@ def summary(db: Session = Depends(get_db)) -> DashboardSummary:
 
     top_risks = db.scalars(
         select(Vulnerability)
-        .order_by(Vulnerability.kev.desc(), Vulnerability.cvss_score.desc().nullslast(), Vulnerability.epss_score.desc().nullslast())
+        .order_by(Vulnerability.published_at.desc().nullslast(), Vulnerability.kev.desc(), Vulnerability.cvss_score.desc().nullslast())
         .limit(10)
     ).all()
     latest_articles = db.scalars(

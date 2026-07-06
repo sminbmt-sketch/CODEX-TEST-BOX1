@@ -328,6 +328,51 @@ button:disabled {
   font-size: 12px;
 }
 
+.list-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.search-field,
+.sort-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  border: 1px solid #334355;
+  border-radius: 6px;
+  background: #101821;
+  color: #9aa7b5;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.search-field {
+  width: min(260px, 100%);
+}
+
+.search-field input,
+.sort-field select {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #d9e3ec;
+  font: inherit;
+}
+
+.search-field input {
+  min-width: 0;
+  width: 100%;
+}
+
+.search-field input::placeholder {
+  color: #697684;
+}
+
 .pager label {
   display: inline-flex;
   align-items: center;
@@ -524,6 +569,14 @@ button:disabled {
   .page-card header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .section-actions,
+  .list-controls,
+  .pager,
+  .search-field {
+    justify-content: flex-start;
+    width: 100%;
   }
 
   .nav,

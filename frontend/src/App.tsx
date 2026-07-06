@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { Activity, AlertTriangle, DatabaseZap, ExternalLink, FileText, Radar, RefreshCw, Server, ShieldCheck, Wifi } from "lucide-react";
+import { Activity, AlertTriangle, DatabaseZap, ExternalLink, FileText, Radar, RefreshCw, Search, Server, Wifi } from "lucide-react";
 import { api, type Article, type DashboardSummary, type Detection, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
 
 type Route = "dashboard" | "cves" | "security-news" | "tanium-inventory" | "reports" | "settings";
@@ -8,6 +8,8 @@ type LoadState = {
   summary?: DashboardSummary;
   vulnerabilities: Vulnerability[];
   articles: Article[];
+  vulnerabilityTotal: number;
+  articleTotal: number;
   detections: Detection[];
   trends?: TrendReport;
   tanium?: TaniumStatus;
@@ -19,6 +21,8 @@ type LoadState = {
 const emptyState: LoadState = {
   vulnerabilities: [],
   articles: [],
+  vulnerabilityTotal: 0,
+  articleTotal: 0,
   detections: [],
   loading: true,
 };
@@ -68,21 +72,29 @@ export default function App() {
   const [route, setRoute] = useState<Route>(() => routeFromHash());
   const [cvePage, setCvePage] = useState(1);
   const [cvePageSize, setCvePageSize] = useState(30);
+  const [cveSearch, setCveSearch] = useState("");
+  const [cveSort, setCveSort] = useState<"date" | "name">("date");
   const [newsPage, setNewsPage] = useState(1);
   const [newsPageSize, setNewsPageSize] = useState(30);
+  const [newsSearch, setNewsSearch] = useState("");
+  const [newsSort, setNewsSort] = useState<"date" | "name">("date");
 
   async function load() {
     setState((current) => ({ ...current, loading: true, error: undefined }));
     try {
-      const [summary, vulnerabilities, articles, tanium, detections, trends] = await Promise.all([
+      const cveParams = { limit: cvePageSize, offset: (cvePage - 1) * cvePageSize, q: cveSearch.trim() || undefined, sort: cveSort };
+      const newsParams = { limit: newsPageSize, offset: (newsPage - 1) * newsPageSize, q: newsSearch.trim() || undefined, sort: newsSort };
+      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, detections, trends] = await Promise.all([
         api.summary(),
-        api.vulnerabilities({ limit: cvePageSize, offset: (cvePage - 1) * cvePageSize }),
-        api.articles({ limit: newsPageSize, offset: (newsPage - 1) * newsPageSize }),
+        api.vulnerabilities(cveParams),
+        api.vulnerabilityCount(cveParams),
+        api.articles(newsParams),
+        api.articleCount(newsParams),
         api.taniumStatus(),
         api.detections(),
         api.trends(),
       ]);
-      setState({ summary, vulnerabilities, articles, tanium, detections, trends, loading: false });
+      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, detections, trends, loading: false });
     } catch (error) {
       setState((current) => ({
         ...current,
@@ -114,7 +126,7 @@ export default function App() {
 
   useEffect(() => {
     void load();
-  }, [cvePage, cvePageSize, newsPage, newsPageSize]);
+  }, [cvePage, cvePageSize, cveSearch, cveSort, newsPage, newsPageSize, newsSearch, newsSort]);
 
   const metrics = useMemo(() => {
     const summary = state.summary;
@@ -197,7 +209,7 @@ export default function App() {
                     <span>EPSS</span>
                     <span>한글 요약</span>
                   </div>
-                  {state.vulnerabilities.slice(0, 4).map((item) => (
+                  {(state.summary?.top_risks || []).slice(0, 4).map((item) => (
                     <div key={item.id} className="cve-row">
                       <strong>{item.cve_id}</strong>
                       <span className={item.kev ? "chip critical" : severityClass(item.cvss_severity)}>{item.kev ? "KEV" : item.cvss_severity || "-"}</span>
@@ -205,7 +217,7 @@ export default function App() {
                       <span>{vulnerabilitySummary(item)}</span>
                     </div>
                   ))}
-                  {!state.vulnerabilities.length && <div className="empty block">No vulnerability data</div>}
+                  {!state.summary?.top_risks.length && <div className="empty block">No vulnerability data</div>}
                 </div>
               </article>
 
@@ -217,7 +229,7 @@ export default function App() {
                   </a>
                 </div>
                 <div className="brief">
-                  {(state.trends?.themes || []).slice(0, 2).map((theme) => (
+                  {(state.trends?.themes || []).slice(0, 1).map((theme) => (
                     <article key={theme}>
                       <strong>Trend</strong>
                       <p>{theme}</p>
@@ -244,10 +256,23 @@ export default function App() {
               badge={`${state.summary?.vulnerability_count ?? state.vulnerabilities.length} CVEs`}
               tone="critical"
             >
+              <ListControls
+                search={cveSearch}
+                searchLabel="CVE 검색"
+                sort={cveSort}
+                onSearchChange={(value) => {
+                  setCveSearch(value);
+                  setCvePage(1);
+                }}
+                onSortChange={(value) => {
+                  setCveSort(value);
+                  setCvePage(1);
+                }}
+              />
               <Pager
                 page={cvePage}
                 pageSize={cvePageSize}
-                total={state.summary?.vulnerability_count ?? state.vulnerabilities.length}
+                total={state.vulnerabilityTotal}
                 onPageChange={setCvePage}
                 onPageSizeChange={(value) => {
                   setCvePageSize(value);
@@ -312,10 +337,23 @@ export default function App() {
               description="수집한 보안 뉴스, 사건사고, KISA 공지, 해외 뉴스를 한글 요약과 함께 제공합니다."
               badge={`${state.summary?.article_count ?? state.articles.length} news`}
             >
+              <ListControls
+                search={newsSearch}
+                searchLabel="뉴스 검색"
+                sort={newsSort}
+                onSearchChange={(value) => {
+                  setNewsSearch(value);
+                  setNewsPage(1);
+                }}
+                onSortChange={(value) => {
+                  setNewsSort(value);
+                  setNewsPage(1);
+                }}
+              />
               <Pager
                 page={newsPage}
                 pageSize={newsPageSize}
-                total={state.summary?.article_count ?? state.articles.length}
+                total={state.articleTotal}
                 onPageChange={setNewsPage}
                 onPageSizeChange={(value) => {
                   setNewsPageSize(value);
@@ -468,6 +506,36 @@ function PageTitle({
         {badge && <span className={`pill ${tone}`}>{badge}</span>}
         {children}
       </div>
+    </div>
+  );
+}
+
+function ListControls({
+  search,
+  searchLabel,
+  sort,
+  onSearchChange,
+  onSortChange,
+}: {
+  search: string;
+  searchLabel: string;
+  sort: "date" | "name";
+  onSearchChange: (value: string) => void;
+  onSortChange: (value: "date" | "name") => void;
+}) {
+  return (
+    <div className="list-controls">
+      <label className="search-field">
+        <Search size={15} />
+        <input value={search} placeholder={searchLabel} onChange={(event) => onSearchChange(event.target.value)} />
+      </label>
+      <label className="sort-field">
+        정렬
+        <select value={sort} onChange={(event) => onSortChange(event.target.value as "date" | "name")}>
+          <option value="date">날짜순</option>
+          <option value="name">이름순</option>
+        </select>
+      </label>
     </div>
   );
 }
