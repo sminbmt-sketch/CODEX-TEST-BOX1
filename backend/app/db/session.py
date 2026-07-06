@@ -29,6 +29,7 @@ def _ensure_schema() -> None:
 
     vulnerability_columns = {column["name"] for column in inspector.get_columns("vulnerabilities")}
     article_columns = {column["name"] for column in inspector.get_columns("articles")} if "articles" in table_names else set()
+    endpoint_columns = {column["name"] for column in inspector.get_columns("endpoint_snapshots")} if "endpoint_snapshots" in table_names else set()
     with engine.begin() as connection:
         if "summary" not in vulnerability_columns:
             connection.execute(text("ALTER TABLE vulnerabilities ADD COLUMN summary TEXT"))
@@ -36,6 +37,10 @@ def _ensure_schema() -> None:
             connection.execute(text("ALTER TABLE vulnerabilities ADD COLUMN summary_status VARCHAR(32)"))
         if "summary_status" not in article_columns:
             connection.execute(text("ALTER TABLE articles ADD COLUMN summary_status VARCHAR(32)"))
+        if "mac_address" not in endpoint_columns:
+            connection.execute(text("ALTER TABLE endpoint_snapshots ADD COLUMN mac_address VARCHAR(64)"))
+        if "platform" not in endpoint_columns:
+            connection.execute(text("ALTER TABLE endpoint_snapshots ADD COLUMN platform VARCHAR(255)"))
 
 
 def get_db() -> Generator[Session, None, None]:

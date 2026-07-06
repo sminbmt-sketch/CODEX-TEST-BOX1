@@ -22,6 +22,26 @@ def _endpoint_nodes(data: dict[str, Any]) -> list[dict[str, Any]]:
     return [edge.get("node", {}) for edge in edges if edge.get("node")]
 
 
+def _first_value(*values: Any) -> str | None:
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, dict):
+            nested = _first_value(*value.values())
+            if nested:
+                return nested
+            continue
+        if isinstance(value, list):
+            nested = _first_value(*value)
+            if nested:
+                return nested
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return None
+
+
 async def sync_endpoint_inventory(db: Session, first: int = 100) -> tuple[int, int]:
     client = TaniumGatewayClient()
     data = await client.get_endpoint_inventory(first=first)
@@ -46,8 +66,10 @@ async def sync_endpoint_inventory(db: Session, first: int = 100) -> tuple[int, i
 
         os_info = node.get("os") or {}
         endpoint.ip_address = node.get("ipAddress")
+        endpoint.mac_address = _first_value(node.get("macAddress"), node.get("macAddresses"), node.get("mac"), node.get("networkAdapters"))
         endpoint.os_name = os_info.get("name") or os_info.get("generation") or os_info.get("platform")
         endpoint.os_version = os_info.get("generation")
+        endpoint.platform = os_info.get("platform") or node.get("platform")
         endpoint.software = node.get("installedApplications") or []
         endpoint.last_seen_at = _parse_time(node.get("eidLastSeen"))
         endpoint.raw = node

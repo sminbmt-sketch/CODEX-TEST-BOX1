@@ -54,8 +54,10 @@ export type EndpointSnapshot = {
   tanium_endpoint_id?: string | null;
   hostname?: string | null;
   ip_address?: string | null;
+  mac_address?: string | null;
   os_name?: string | null;
   os_version?: string | null;
+  platform?: string | null;
   software?: unknown;
   last_seen_at?: string | null;
 };
@@ -186,6 +188,7 @@ export const api = {
   taniumTest: () => request<Record<string, unknown>>("/api/tanium/test", { method: "POST" }),
   taniumSyncEndpoints: () => request<Record<string, unknown>>("/api/tanium/sync-endpoints", { method: "POST" }),
   taniumAnalyzeImpact: () => request<Record<string, unknown>>("/api/tanium/analyze-impact", { method: "POST" }),
+  inventory: () => request<EndpointSnapshot[]>("/api/tanium/inventory?limit=1000"),
   detections: () => request<Detection[]>("/api/tanium/detections?limit=25"),
   trends: () => request<TrendReport>("/api/summaries/trends?limit=8"),
   summarizeArticles: (params?: SummaryParams) => request<Record<string, unknown>>(`/api/summaries/articles${summaryQuery(params ?? { limit: 20 })}`, { method: "POST" }),

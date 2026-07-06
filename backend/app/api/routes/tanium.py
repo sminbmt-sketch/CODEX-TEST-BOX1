@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.db.models import Detection, Vulnerability
+from app.db.models import Detection, EndpointSnapshot, Vulnerability
 from app.db.session import get_db
-from app.schemas import DetectionOut, ImpactAnalysisResult, TaniumStatus
+from app.schemas import DetectionOut, EndpointSnapshotOut, ImpactAnalysisResult, TaniumStatus
 from app.services.impact import analyze_basic_software_matches, analyze_recent_vulnerabilities
 from app.services.tanium_client import TaniumConfigurationError, TaniumGatewayClient
 from app.services.tanium_inventory import sync_endpoint_inventory
@@ -40,6 +40,19 @@ async def endpoint_ids(first: int = Query(default=50, ge=1, le=500)) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Tanium endpoint query failed: {exc}") from exc
+
+
+@router.get("/inventory", response_model=list[EndpointSnapshotOut])
+def list_inventory(
+    limit: int = Query(default=200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+) -> list[EndpointSnapshotOut]:
+    rows = db.scalars(
+        select(EndpointSnapshot)
+        .order_by(EndpointSnapshot.hostname.asc().nullslast(), EndpointSnapshot.last_seen_at.desc().nullslast())
+        .limit(limit)
+    ).all()
+    return [EndpointSnapshotOut.model_validate(row) for row in rows]
 
 
 @router.post("/sync-endpoints", response_model=ImpactAnalysisResult)

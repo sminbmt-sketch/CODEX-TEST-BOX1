@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { DatabaseZap, ExternalLink, FileText, Radar, RefreshCw, Search, Server, Wifi } from "lucide-react";
-import { api, type Article, type DashboardSummary, type Detection, type LlmProvider, type LlmSettings, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
+import { api, type Article, type DashboardSummary, type Detection, type EndpointSnapshot, type LlmProvider, type LlmSettings, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
 
 type Route = "dashboard" | "cves" | "security-news" | "tanium-inventory" | "reports" | "settings";
 
@@ -10,6 +10,7 @@ type LoadState = {
   articles: Article[];
   vulnerabilityTotal: number;
   articleTotal: number;
+  inventory: EndpointSnapshot[];
   detections: Detection[];
   trends?: TrendReport;
   tanium?: TaniumStatus;
@@ -24,6 +25,7 @@ const emptyState: LoadState = {
   articles: [],
   vulnerabilityTotal: 0,
   articleTotal: 0,
+  inventory: [],
   detections: [],
   loading: true,
 };
@@ -71,6 +73,18 @@ function epss(value?: number | null) {
   return value != null ? `${Math.round(value * 1000) / 10}%` : "-";
 }
 
+function endpointPlatform(endpoint: EndpointSnapshot) {
+  if (endpoint.platform) return endpoint.platform;
+  const osText = `${endpoint.os_name || ""} ${endpoint.os_version || ""}`.toLowerCase();
+  if (osText.includes("windows")) return "Windows";
+  if (osText.includes("macos") || osText.includes("mac os")) return "macOS";
+  if (osText.includes("linux")) return "Linux";
+  if (osText.includes("ubuntu")) return "Linux";
+  if (osText.includes("debian")) return "Linux";
+  if (osText.includes("aix")) return "AIX";
+  return "-";
+}
+
 function vulnerabilitySummary(item: Vulnerability) {
   return item.summary || item.description || "수집된 원문 링크와 CVE 메타데이터 확인이 필요합니다.";
 }
@@ -104,18 +118,19 @@ export default function App() {
     try {
       const cveParams = { limit: cvePageSize, offset: (cvePage - 1) * cvePageSize, q: cveSearch.trim() || undefined, sort: cveSort };
       const newsParams = { limit: newsPageSize, offset: (newsPage - 1) * newsPageSize, q: newsSearch.trim() || undefined, sort: newsSort };
-      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, detections, trends, llm] = await Promise.all([
+      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm] = await Promise.all([
         api.summary(),
         api.vulnerabilities(cveParams),
         api.vulnerabilityCount(cveParams),
         api.articles(newsParams),
         api.articleCount(newsParams),
         api.taniumStatus(),
+        api.inventory(),
         api.detections(),
         api.trends(),
         api.llmSettings(),
       ]);
-      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, detections, trends, llm, loading: false });
+      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, loading: false });
       setLlmForm((current) => ({
         ...current,
         provider: llm.provider,
@@ -218,17 +233,6 @@ export default function App() {
       },
     ];
   }, [state.summary, state.tanium]);
-
-  const endpointRows = useMemo(() => {
-    const seen = new Set<number>();
-    return state.detections
-      .filter((detection) => {
-        if (seen.has(detection.endpoint.id)) return false;
-        seen.add(detection.endpoint.id);
-        return true;
-      })
-      .map((detection) => ({ endpoint: detection.endpoint, detection }));
-  }, [state.detections]);
 
   return (
     <main className="ops-app">
@@ -474,33 +478,33 @@ export default function App() {
 
         {route === "tanium-inventory" && (
           <section>
-            <PageTitle title="Tanium Inventory" description="Tanium API로 수집한 단말, OS, IP, 설치 소프트웨어, CVE 매칭 근거를 제공합니다." badge={`${state.summary?.endpoint_count ?? 0} endpoints`} tone="ok" />
+            <PageTitle title="Tanium Inventory" description="Tanium API로 수집한 단말 기본 정보를 제공합니다." badge={`${state.summary?.endpoint_count ?? state.inventory.length} endpoints`} tone="ok" />
             <article className="page-card">
               <header>
                 <div>
                   <h3>수집 단말 목록</h3>
-                  <p>현재 화면은 CVE 영향 분석 결과에 포함된 단말 정보를 우선 표시합니다.</p>
+                  <p>Host Name, IP, MAC, Operating System, Platform 기준으로 표시합니다.</p>
                 </div>
                 <span className={state.tanium?.configured ? "pill ok" : "pill neutral"}>{state.tanium?.configured ? "Online" : "Missing"}</span>
               </header>
               <div className="table">
                 <div className="inventory-row header">
-                  <span>Endpoint</span>
+                  <span>Host Name</span>
                   <span>IP</span>
-                  <span>OS / Evidence</span>
-                  <span>Risk</span>
+                  <span>MAC</span>
+                  <span>Operating System</span>
+                  <span>Platform</span>
                 </div>
-                {endpointRows.map(({ endpoint, detection }) => (
+                {state.inventory.map((endpoint) => (
                   <div key={endpoint.id} className="inventory-row">
                     <strong>{endpoint.hostname || endpoint.tanium_endpoint_id || "Unknown"}</strong>
                     <span>{endpoint.ip_address || "-"}</span>
-                    <span>
-                      {endpoint.os_name || "-"} · {detection.vulnerability.cve_id} · {detection.match_reason}
-                    </span>
-                    <span className={detection.confidence >= 0.8 ? "chip critical" : "chip high"}>{Math.round(detection.confidence * 100)}%</span>
+                    <span>{endpoint.mac_address || "-"}</span>
+                    <span>{[endpoint.os_name, endpoint.os_version].filter(Boolean).join(" ") || "-"}</span>
+                    <span>{endpointPlatform(endpoint)}</span>
                   </div>
                 ))}
-                {!endpointRows.length && <div className="empty block">No inventory detections</div>}
+                {!state.inventory.length && <div className="empty block">No endpoint inventory</div>}
               </div>
             </article>
           </section>

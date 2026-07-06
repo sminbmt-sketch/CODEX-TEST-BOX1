@@ -55,8 +55,10 @@ class EndpointSnapshotOut(BaseModel):
     tanium_endpoint_id: str | None = None
     hostname: str | None = None
     ip_address: str | None = None
+    mac_address: str | None = None
     os_name: str | None = None
     os_version: str | None = None
+    platform: str | None = None
     last_seen_at: datetime | None = None
 
 
