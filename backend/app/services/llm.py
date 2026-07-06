@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 import httpx
 import re
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -20,7 +21,7 @@ DEFAULT_LLM_BASE_URLS = {
 DEFAULT_LLM_MODELS = {
     "ollama": "qwen2.5:1.5b",
     "openai": "gpt-4o-mini",
-    "gemini": "gemini-1.5-flash",
+    "gemini": "gemini-3.5-flash",
     "anthropic": "claude-3-5-haiku-latest",
 }
 
@@ -45,6 +46,23 @@ def default_model(provider: str) -> str:
 
 def get_llm_setting(db: Session) -> LlmSetting | None:
     return db.scalar(select(LlmSetting).order_by(LlmSetting.id.asc()).limit(1))
+
+
+def sanitize_llm_error(exc: Exception) -> str:
+    message = str(exc)
+    if isinstance(exc, httpx.HTTPStatusError):
+        message = f"{exc.response.status_code} {exc.response.reason_phrase}"
+        try:
+            detail = exc.response.json().get("error", {}).get("message")
+        except ValueError:
+            detail = None
+        if detail:
+            message = f"{message}: {detail}"
+    parts = urlsplit(message)
+    if parts.query:
+        safe_query = urlencode((key, "REDACTED" if key.lower() in {"key", "api_key", "apikey"} else value) for key, value in parse_qsl(parts.query, keep_blank_values=True))
+        message = urlunsplit((parts.scheme, parts.netloc, parts.path, safe_query, parts.fragment))
+    return re.sub(r"key=[^\\s&]+", "key=REDACTED", message)
 
 
 def resolve_llm_config(db: Session | None = None) -> LlmRuntimeConfig:

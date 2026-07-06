@@ -42,7 +42,7 @@ const llmDefaults: Record<LlmProvider, { baseUrl: string; model: string }> = {
   disabled: { baseUrl: "", model: "" },
   ollama: { baseUrl: "http://localhost:11434/v1", model: "qwen2.5:1.5b" },
   openai: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini" },
-  gemini: { baseUrl: "https://generativelanguage.googleapis.com/v1beta", model: "gemini-1.5-flash" },
+  gemini: { baseUrl: "https://generativelanguage.googleapis.com/v1beta", model: "gemini-3.5-flash" },
   anthropic: { baseUrl: "https://api.anthropic.com/v1", model: "claude-3-5-haiku-latest" },
 };
 

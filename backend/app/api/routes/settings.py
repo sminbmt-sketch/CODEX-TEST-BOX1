@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.db.models import LlmSetting
 from app.db.session import get_db
 from app.schemas import LlmSettingOut, LlmSettingUpdate, LlmTestResult
-from app.services.llm import LlmRuntimeConfig, SummaryService, default_base_url, default_model, get_llm_setting, resolve_llm_config
+from app.services.llm import LlmRuntimeConfig, SummaryService, default_base_url, default_model, get_llm_setting, resolve_llm_config, sanitize_llm_error
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -92,7 +92,7 @@ async def test_llm_settings(
             [],
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"LLM test failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"LLM test failed: {sanitize_llm_error(exc)}") from exc
     if not content:
         return LlmTestResult(ok=False, provider=config.provider, model=config.model, message="No response from provider.")
     return LlmTestResult(ok=True, provider=config.provider, model=config.model, message=content[:300])
