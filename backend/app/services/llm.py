@@ -21,7 +21,7 @@ DEFAULT_LLM_BASE_URLS = {
 DEFAULT_LLM_MODELS = {
     "ollama": "qwen2.5:1.5b",
     "openai": "gpt-4o-mini",
-    "gemini": "gemini-3.5-flash",
+    "gemini": "gemini-3.1-flash-lite",
     "anthropic": "claude-3-5-haiku-latest",
 }
 

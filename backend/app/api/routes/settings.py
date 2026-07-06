@@ -9,6 +9,20 @@ from app.services.llm import LlmRuntimeConfig, SummaryService, default_base_url,
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
+MODEL_ALIASES = {
+    "gemini 3.1 flash lite": "gemini-3.1-flash-lite",
+    "gemini 3.1 flash-lite": "gemini-3.1-flash-lite",
+    "gemini-3.1-flash lite": "gemini-3.1-flash-lite",
+}
+
+
+def normalize_model(provider: str, model: str | None) -> str:
+    value = (model or default_model(provider)).strip()
+    if provider == "gemini":
+        return MODEL_ALIASES.get(value.lower(), value)
+    return value
+
+
 def _out(setting: LlmSetting | None) -> LlmSettingOut:
     config = resolve_llm_config()
     if setting is not None:
@@ -29,7 +43,7 @@ def resolve_llm_config_from_row(setting: LlmSetting):
     return LlmRuntimeConfig(
         provider=provider,
         base_url=setting.base_url or default_base_url(provider),
-        model=setting.model or default_model(provider),
+        model=normalize_model(provider, setting.model),
         api_key=setting.api_key,
         timeout_seconds=setting.timeout_seconds,
         max_tokens=setting.max_tokens,
@@ -42,7 +56,7 @@ def resolve_llm_config_from_payload(payload: LlmSettingUpdate, saved: LlmSetting
     return LlmRuntimeConfig(
         provider=payload.provider,
         base_url=payload.base_url or default_base_url(payload.provider),
-        model=payload.model or default_model(payload.provider),
+        model=normalize_model(payload.provider, payload.model),
         api_key=api_key,
         timeout_seconds=payload.timeout_seconds,
         max_tokens=payload.max_tokens,
@@ -63,7 +77,7 @@ def update_llm_settings(payload: LlmSettingUpdate, db: Session = Depends(get_db)
 
     row.provider = payload.provider
     row.base_url = payload.base_url or default_base_url(payload.provider)
-    row.model = payload.model or default_model(payload.provider)
+    row.model = normalize_model(payload.provider, payload.model)
     row.timeout_seconds = payload.timeout_seconds
     row.max_tokens = payload.max_tokens
 
