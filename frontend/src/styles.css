@@ -279,6 +279,13 @@ button:disabled {
   text-overflow: ellipsis;
 }
 
+.badge-stack {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .critical {
   background: #4a1719;
   color: #ffb4ad;

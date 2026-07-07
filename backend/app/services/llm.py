@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
+import json
 import httpx
 import re
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -15,6 +16,35 @@ SUMMARY_LABEL_RE = re.compile(
     r"^\s*(?:[-*]\s*)?(?:\*\*)?\s*(?:\[?\s*)?(?:보안\s*)?(?:이슈\s*)?요약(?:\s*\]|\s*:|\s*：|\s*-)?(?:\*\*)?\s*",
     re.IGNORECASE,
 )
+JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
+SUMMARY_SCHEMA_EXAMPLE = {
+    "content": {
+        "source_type": "news",
+        "title": "source title",
+        "risk": "low | medium | high | critical | unknown",
+        "summary": "한국어 1~5줄 보안 요약",
+        "body": "원문 일부 또는 핵심 본문",
+        "source_url": "https://example.com/source",
+        "published_at": None,
+    },
+    "entities": {
+        "attacker": [],
+        "victim": [],
+        "software": [],
+        "version": [],
+        "vulnerability": [],
+        "cve": [],
+    },
+    "iocs": {
+        "ip": [],
+        "domain": [],
+        "url": [],
+        "hash": [],
+        "file": [],
+        "process": [],
+        "commandline": [],
+    },
+}
 SUMMARY_RECENT_DAYS = 7
 DEFAULT_LLM_BASE_URLS = {
     "ollama": "http://localhost:11434/v1",
@@ -87,25 +117,28 @@ class SummaryService:
     def __init__(self, config: LlmRuntimeConfig):
         self.config = config
 
-    async def summarize(self, title: str, body: str, source_urls: list[str]) -> str | None:
+    async def summarize(self, title: str, body: str, source_urls: list[str], source_type: str = "news") -> str | None:
         if self.config.provider == "disabled":
             return None
 
         system_prompt = (
-            "You are a Korean security analyst. Always answer in Korean only. "
-            "First translate the meaningful English source text into Korean, then summarize the translated content. "
-            "Write a 1-5 line Korean summary focused on security impact and action. "
-            "Return only the summary sentences. Do not add labels, headings, prefixes, bullets, markdown, or bracketed markers such as '요약:', '보안 요약:', '[요약]', or '[보안 이슈 요약]'. "
-            "Use only the provided text and mention uncertainty when evidence is limited. "
-            "Do not invent affected products or CVEs. "
+            "You are a Korean security analyst. Analyze only the provided source text. "
+            "Return valid JSON only, with no markdown, no code fences, and no explanatory prose. "
+            "The content.summary value must be Korean, 1-5 lines, and focused on security impact and recommended action. "
+            "Do not add labels such as '요약:' or '[보안 요약]' inside any value. "
+            "Do not invent affected products, CVEs, entities, or IOCs. Use empty arrays when evidence is absent. "
+            "IOC fields must include only values explicitly present in the source text. "
             "Do not include chain-of-thought, hidden reasoning, or <think> blocks."
         )
+        schema = json.dumps(SUMMARY_SCHEMA_EXAMPLE, ensure_ascii=False, indent=2)
         user_prompt = (
-            "아래 영문 내용을 먼저 한국어로 번역한 뒤, 번역한 내용을 기반으로 핵심 보안 이슈를 1~5줄로 요약하세요.\n\n"
-            "출력 규칙:\n"
-            "- 요약 문장만 출력하세요.\n"
-            "- '요약:', '보안 요약:', '[요약]', '[보안 이슈 요약]' 같은 제목/라벨/마커를 절대 붙이지 마세요.\n"
-            "- markdown 굵게, bullet, 번호 목록을 사용하지 마세요.\n\n"
+            "아래 보안 뉴스/CVE 원문을 분석해서 지정된 JSON 스키마만 출력하세요.\n"
+            "응답은 반드시 valid JSON이어야 하며 markdown, 설명, 코드블록을 포함하지 마세요.\n"
+            "원문에 없는 정보는 추측하지 말고 빈 배열 또는 null로 두세요.\n"
+            "content.summary는 반드시 한국어 1~5줄로 작성하세요.\n"
+            "IOC는 원문에 명시된 값만 포함하세요.\n\n"
+            f"지정 JSON 스키마:\n{schema}\n\n"
+            f"source_type: {source_type}\n"
             f"Title: {title}\n\nBody:\n{body[:8000]}\n\nSources:\n" + "\n".join(source_urls)
         )
         if self.config.provider in {"ollama", "openai"}:
@@ -232,6 +265,24 @@ def _canonicalize_summary(value: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _extract_json_summary(value: str) -> str | None:
+    text = THINK_BLOCK_RE.sub("", value).strip()
+    match = JSON_BLOCK_RE.search(text)
+    if match:
+        text = match.group(1).strip()
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    content = payload.get("content") if isinstance(payload, dict) else None
+    summary = content.get("summary") if isinstance(content, dict) else None
+    if isinstance(summary, str):
+        return summary
+    if isinstance(summary, list):
+        return "\n".join(str(item) for item in summary if item)
+    return None
+
+
 def _fallback_article_summary(article: Article) -> str:
     excerpt = _compact(article.raw_excerpt, 700)
     if excerpt:
@@ -248,7 +299,7 @@ def _fallback_vulnerability_summary(vulnerability: Vulnerability) -> str:
 def _usable_summary(summary: str | None, required_terms: list[str] | None = None) -> str | None:
     if not summary:
         return None
-    cleaned = _canonicalize_summary(summary)
+    cleaned = _canonicalize_summary(_extract_json_summary(summary) or summary)
     if not _has_korean_text(cleaned):
         return None
     lowered = cleaned.lower()
@@ -282,7 +333,7 @@ async def summarize_recent_articles(db: Session, limit: int | None = 20, days: i
         summary = None
         if llm_config.provider != "disabled":
             try:
-                summary = await service.summarize(article.title, body, [article.url])
+                summary = await service.summarize(article.title, body, [article.url], source_type="news")
             except Exception:
                 summary = None
         usable_summary = _usable_summary(summary)
@@ -321,6 +372,7 @@ async def summarize_recent_vulnerabilities(db: Session, limit: int | None = 20, 
                     vulnerability.title or vulnerability.cve_id,
                     _vulnerability_body(vulnerability),
                     [vulnerability.source_url] if vulnerability.source_url else [],
+                    source_type="cve",
                 )
             except Exception:
                 summary = None

@@ -156,6 +156,12 @@ function articleDisplay(article: Article) {
   };
 }
 
+function SummaryStatusBadge({ status }: { status?: string | null }) {
+  if (status === "llm") return <span className="pill ok">LLM</span>;
+  if (status === "fallback") return <span className="pill neutral">Fallback</span>;
+  return <span className="pill neutral">No LLM</span>;
+}
+
 export default function App() {
   const [state, setState] = useState<LoadState>(emptyState);
   const [route, setRoute] = useState<Route>(() => routeFromHash());
@@ -479,7 +485,10 @@ export default function App() {
                       </h3>
                       <p>{item.title || [item.vendor, item.product].filter(Boolean).join(" / ") || "제품 식별 정보 확인 필요"}</p>
                     </div>
-                    <span className={item.kev ? "pill critical" : severityClass(item.cvss_severity)}>{item.kev ? "KEV" : item.cvss_severity || "CVE"}</span>
+                    <div className="badge-stack">
+                      <span className={item.kev ? "pill critical" : severityClass(item.cvss_severity)}>{item.kev ? "KEV" : item.cvss_severity || "CVE"}</span>
+                      <SummaryStatusBadge status={item.summary_status} />
+                    </div>
                   </header>
                   <div className="body">
                     <div className="stat-grid">
@@ -585,7 +594,10 @@ export default function App() {
                           {article.source?.name || "Source"} · {formatDate(article.published_at)}
                         </p>
                       </div>
-                      <span className="pill neutral">{article.source?.kind || "news"}</span>
+                      <div className="badge-stack">
+                        <span className="pill neutral">{article.source?.kind || "news"}</span>
+                        <SummaryStatusBadge status={article.summary_status} />
+                      </div>
                     </header>
                     <div className="body">
                       <article className="post news-summary-post">

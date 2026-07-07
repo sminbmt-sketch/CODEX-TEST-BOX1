@@ -43,6 +43,7 @@ class ArticleOut(BaseModel):
     url: str
     published_at: datetime | None = None
     summary: str | None = None
+    summary_status: str | None = None
     tags: dict | list | None = None
     risk_score: float
     source: SourceOut | None = None
@@ -56,6 +57,7 @@ class VulnerabilityOut(BaseModel):
     title: str | None = None
     description: str | None = None
     summary: str | None = None
+    summary_status: str | None = None
     cvss_score: float | None = None
     cvss_severity: str | None = None
     epss_score: float | None = None

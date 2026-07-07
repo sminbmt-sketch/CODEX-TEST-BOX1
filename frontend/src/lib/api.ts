@@ -32,6 +32,7 @@ export type Article = {
   url: string;
   published_at?: string | null;
   summary?: string | null;
+  summary_status?: string | null;
   raw_excerpt?: string | null;
   tags?: unknown;
   risk_score: number;
@@ -44,6 +45,7 @@ export type Vulnerability = {
   title?: string | null;
   description?: string | null;
   summary?: string | null;
+  summary_status?: string | null;
   cvss_score?: number | null;
   cvss_severity?: string | null;
   epss_score?: number | null;
