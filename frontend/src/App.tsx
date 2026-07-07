@@ -100,6 +100,36 @@ function vulnerabilitySummary(item: Vulnerability) {
   return item.summary || item.description || "수집된 원문 링크와 CVE 메타데이터 확인이 필요합니다.";
 }
 
+function cleanSummaryText(value?: string | null) {
+  if (!value) return "";
+  return value
+    .replace(/\*\*\s*\[?번역\]?\s*\*\*/gi, "")
+    .replace(/^\s*\[?번역\]?\s*[:：-]?\s*/gim, "")
+    .replace(/^\s*\*\*\s*(제목|본문)\s*[:：,]\s*/gim, "")
+    .replace(/^\s*\*\*\s*(제목|본문)\s*[:：,]?\s*\*\*\s*/gim, "")
+    .replace(/^\s*\*\*\s*(제목|본문)\s*\*\*\s*[:：,]?\s*/gim, "")
+    .replace(/^\s*(제목|본문)\s*[:：,]\s*/gim, "")
+    .replace(/\*\*/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function articleSummaryBody(article: Article) {
+  const raw = article.summary || article.raw_excerpt;
+  if (!raw) return "원문 링크 확인이 필요합니다.";
+  const body = raw
+    .replace(/\*\*\s*\[?번역\]?\s*\*\*/gi, "")
+    .replace(/^\s*\[?번역\]?\s*[:：-]?\s*/gim, "")
+    .split("\n")
+    .map((line) => line.trim().replace(/\*\*/g, ""))
+    .filter((line) => line && !/^제목\s*[:：,]/.test(line))
+    .map((line) => line.replace(/^본문\s*[:：,]\s*/, ""))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return body || "원문 링크 확인이 필요합니다.";
+}
+
 export default function App() {
   const [state, setState] = useState<LoadState>(emptyState);
   const [route, setRoute] = useState<Route>(() => routeFromHash());
@@ -319,25 +349,25 @@ export default function App() {
             <section className="dashboard-grid">
               <article className="panel">
                 <div className="panel-header">
-                  <h2>High Priority CVE / KEV</h2>
+                  <h2>last CVE / KEV</h2>
                   <a className="link-button" href="#/cves">
                     CVE / KEV 전체 보기
                   </a>
                 </div>
                 <div className="table">
                   <div className="cve-row header">
-                    <span>CVE</span>
+                    <span className="center-cell">CVE</span>
                     <span>KEV/Severity</span>
-                    <span>EPSS</span>
+                    <span className="center-cell">EPSS</span>
                     <span>요약 내용</span>
                   </div>
                   {(state.summary?.top_risks || []).slice(0, 4).map((item) => (
                     <div key={item.id} className="cve-row">
-                      <strong>{item.cve_id}</strong>
+                      <strong className="center-cell">{item.cve_id}</strong>
                       <span className={item.kev ? "chip critical" : severityClass(item.cvss_severity)} title={item.cvss_severity || undefined}>
                         {item.kev ? "KEV" : severityLabel(item.cvss_severity)}
                       </span>
-                      <span>{epss(item.epss_score)}</span>
+                      <span className="center-cell">{epss(item.epss_score)}</span>
                       <span>{vulnerabilitySummary(item)}</span>
                     </div>
                   ))}
@@ -347,25 +377,19 @@ export default function App() {
 
               <article className="panel">
                 <div className="panel-header">
-                  <h2>Trend Brief</h2>
+                  <h2>Security News</h2>
                   <a className="link-button" href="#/security-news">
-                    Trend 게시글 전체 보기
+                    Security News 전체 보기
                   </a>
                 </div>
                 <div className="brief">
-                  {(state.trends?.themes || []).slice(0, 1).map((theme) => (
-                    <article key={theme}>
-                      <strong>Trend</strong>
-                      <p>{theme}</p>
-                    </article>
-                  ))}
-                  {(state.trends?.news || []).slice(0, 2).map((item) => (
+                  {(state.summary?.latest_articles || []).slice(0, 3).map((item) => (
                     <article key={item.url}>
                       <strong>{item.title}</strong>
-                      <p>{item.summary}</p>
+                      <p>{articleSummaryBody(item)}</p>
                     </article>
                   ))}
-                  {!state.trends?.themes.length && !state.trends?.news.length && <div className="empty block">No trend summary</div>}
+                  {!state.summary?.latest_articles.length && <div className="empty block">No news summary</div>}
                 </div>
               </article>
             </section>
@@ -528,7 +552,16 @@ export default function App() {
                   <div className="body">
                     <article className="post">
                       <h4>요약 내용</h4>
-                      <p>{article.summary || article.raw_excerpt || "원문 링크 확인이 필요합니다."}</p>
+                      <div className="summary-fields">
+                        <div className="summary-field">
+                          <span>제목</span>
+                          <p>{cleanSummaryText(article.title)}</p>
+                        </div>
+                        <div className="summary-field">
+                          <span>본문</span>
+                          <p>{articleSummaryBody(article)}</p>
+                        </div>
+                      </div>
                       <div className="meta">
                         <span>원문 링크</span>
                         <span>RSS</span>

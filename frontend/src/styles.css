@@ -233,6 +233,11 @@ button:disabled {
   font-size: 13px;
 }
 
+.center-cell {
+  justify-self: center;
+  text-align: center;
+}
+
 .cve-row.header,
 .inventory-row.header {
   color: #8b98a6;
@@ -304,6 +309,30 @@ button:disabled {
   color: #9aa7b5;
   font-size: 13px;
   line-height: 1.5;
+}
+
+.summary-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.summary-field {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.summary-field > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  border: 1px solid #304153;
+  border-radius: 6px;
+  color: #b7c3cf;
+  font-size: 12px;
+  font-weight: 780;
 }
 
 .brief p,
