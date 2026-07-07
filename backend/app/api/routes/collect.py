@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -6,7 +8,7 @@ from app.db.models import Vulnerability
 from app.db.session import get_db
 from app.schemas import CollectionResult
 from app.services.news_sources import collect_rss_feeds
-from app.services.vulnerability_sources import collect_cisa_kev, collect_recent_nvd, update_epss_scores
+from app.services.vulnerability_sources import collect_cisa_kev, collect_nvd_year_feed, collect_recent_nvd, update_epss_scores
 
 router = APIRouter(prefix="/collect", tags=["collect"])
 
@@ -22,6 +24,18 @@ async def run_nvd_collection(
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"NVD collection failed: {exc}") from exc
     return CollectionResult(source="NVD", fetched=fetched, created_or_updated=changed)
+
+
+@router.post("/nvd/year", response_model=CollectionResult)
+async def run_nvd_year_collection(
+    year: int = Query(default=datetime.now().year, ge=2002, le=datetime.now().year),
+    db: Session = Depends(get_db),
+) -> CollectionResult:
+    try:
+        fetched, changed = await collect_nvd_year_feed(db, year=year)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"NVD year feed collection failed: {exc}") from exc
+    return CollectionResult(source=f"NVD CVE {year}", fetched=fetched, created_or_updated=changed)
 
 
 @router.post("/cisa-kev", response_model=CollectionResult)

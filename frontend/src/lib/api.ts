@@ -227,6 +227,7 @@ export const api = {
   summarizeVulnerabilities: (params?: SummaryParams) => request<Record<string, unknown>>(`/api/summaries/vulnerabilities${summaryQuery(params ?? { limit: 20 })}`, { method: "POST" }),
   summarizeAll: (params?: SummaryParams) => request<Record<string, unknown>[]>(`/api/summaries/all${summaryQuery(params)}`, { method: "POST" }),
   collectNvd: () => request("/api/collect/nvd", { method: "POST" }),
+  collectNvdYear: (year: number) => request(`/api/collect/nvd/year?year=${encodeURIComponent(String(year))}`, { method: "POST" }),
   collectCisaKev: () => request("/api/collect/cisa-kev", { method: "POST" }),
   collectEpss: () => request("/api/collect/epss", { method: "POST" }),
   collectNews: () => request("/api/collect/news", { method: "POST" }),

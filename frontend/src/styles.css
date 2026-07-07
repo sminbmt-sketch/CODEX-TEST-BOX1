@@ -710,6 +710,11 @@ button:disabled {
   grid-template-columns: minmax(180px, 240px) minmax(220px, 1fr) auto;
 }
 
+.nvd-year-form {
+  grid-template-columns: minmax(160px, 220px) auto;
+  align-items: end;
+}
+
 .data-management-card {
   border-color: #3a2d30;
 }

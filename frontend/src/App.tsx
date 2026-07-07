@@ -42,6 +42,7 @@ const navItems: { route: Route; label: string }[] = [
 ];
 
 const pageSizeOptions = [10, 30, 50, 100];
+const currentYear = new Date().getFullYear();
 const llmDefaults: Record<LlmProvider, { baseUrl: string; model: string }> = {
   disabled: { baseUrl: "", model: "" },
   ollama: { baseUrl: "http://localhost:11434/v1", model: "qwen2.5:1.5b" },
@@ -181,6 +182,7 @@ export default function App() {
   });
   const [summaryDays, setSummaryDays] = useState(7);
   const [includeExistingSummaries, setIncludeExistingSummaries] = useState(false);
+  const [nvdYear, setNvdYear] = useState(currentYear);
   const [llmForm, setLlmForm] = useState({
     provider: "disabled" as LlmProvider,
     baseUrl: "",
@@ -284,6 +286,10 @@ export default function App() {
       await api.collectCisaKev();
       await api.collectEpss();
     });
+  }
+
+  async function runNvdYearUpdate() {
+    await runAction(`NVD ${nvdYear}`, () => api.collectNvdYear(nvdYear));
   }
 
   async function runSummariesUpdate() {
@@ -756,6 +762,37 @@ export default function App() {
                 actionDisabled={Boolean(state.action)}
               />
             </div>
+            <article className="page-card settings-card">
+              <header>
+                <div>
+                  <h3>NVD Year Feed</h3>
+                  <p>NVD JSON 2.0 Feeds 페이지를 기준으로 선택한 연도의 CVE 전체 feed를 가져옵니다.</p>
+                </div>
+                <span className="pill neutral">{nvdYear}</span>
+              </header>
+              <div className="settings-form nvd-year-form">
+                <label>
+                  CVE 연도
+                  <input
+                    type="number"
+                    min={2002}
+                    max={currentYear}
+                    value={nvdYear}
+                    onChange={(event) => setNvdYear(Number(event.target.value))}
+                  />
+                </label>
+                <div className="settings-actions">
+                  <button title="Collect NVD CVE JSON feed for selected year" onClick={() => void runNvdYearUpdate()} disabled={Boolean(state.action) || nvdYear < 2002 || nvdYear > currentYear}>
+                    <DatabaseZap size={16} />
+                    <span>Year Update</span>
+                  </button>
+                </div>
+              </div>
+              <div className="settings-note">
+                <span>Source: NVD JSON Feeds</span>
+                <span>2002 - {currentYear}</span>
+              </div>
+            </article>
             <article className="page-card settings-card">
               <header>
                 <div>

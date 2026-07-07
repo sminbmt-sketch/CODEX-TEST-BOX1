@@ -7,7 +7,7 @@ from app.db.session import get_db
 from app.schemas import DataResetResult, LlmSettingOut, LlmSettingUpdate, LlmTestResult, SourceCreate, SourceOut, SourceUpdate
 from app.services.news_sources import DEFAULT_HTML_SOURCES, DEFAULT_NEWS_FEEDS
 from app.services.llm import LlmRuntimeConfig, SummaryService, default_base_url, default_model, get_llm_setting, resolve_llm_config, sanitize_llm_error
-from app.services.vulnerability_sources import CISA_KEV_URL, EPSS_URL, NVD_CVE_URL
+from app.services.vulnerability_sources import CISA_KEV_URL, EPSS_URL, NVD_CVE_URL, NVD_DATA_FEEDS_URL
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -29,6 +29,7 @@ def normalize_model(provider: str, model: str | None) -> str:
 def ensure_default_sources(db: Session) -> None:
     defaults = [
         ("NVD", NVD_CVE_URL, "vulnerability"),
+        ("NVD JSON Feeds", NVD_DATA_FEEDS_URL, "vulnerability"),
         ("CISA KEV", CISA_KEV_URL, "vulnerability"),
         ("FIRST EPSS", EPSS_URL, "vulnerability"),
         *DEFAULT_NEWS_FEEDS,
