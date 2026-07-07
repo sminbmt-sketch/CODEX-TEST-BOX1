@@ -673,10 +673,14 @@ export default function App() {
                   <Trash2 size={16} />
                   <span>Security News 삭제</span>
                 </button>
+                <button type="button" onClick={() => void resetData("inventory", "Tanium Inventory")} disabled={Boolean(state.action)}>
+                  <Trash2 size={16} />
+                  <span>Tanium Inventory 삭제</span>
+                </button>
               </div>
               <div className="settings-note">
                 <span>전체: CVE, Security News, Tanium Inventory, Detection 삭제</span>
-                <span>부분: CVE 또는 Security News만 삭제</span>
+                <span>부분: CVE, Security News, Tanium Inventory만 삭제</span>
               </div>
             </article>
             <div className="source-settings-grid">

@@ -141,7 +141,7 @@ export type LlmTestResult = {
   message: string;
 };
 
-export type DataResetTarget = "all" | "cves" | "news";
+export type DataResetTarget = "all" | "cves" | "news" | "inventory";
 
 export type DataResetResult = {
   target: DataResetTarget;

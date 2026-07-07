@@ -234,14 +234,20 @@ button:disabled {
 }
 
 .center-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  place-self: center;
   justify-self: center;
   text-align: center;
+  width: 100%;
 }
 
 .cve-id-cell,
 .epss-cell {
   display: inline-flex;
-  justify-self: stretch;
+  align-items: center;
+  place-self: center stretch;
   justify-content: center;
   text-align: center;
   width: 100%;

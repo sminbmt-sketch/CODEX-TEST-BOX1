@@ -152,8 +152,8 @@ def _delete_count(db: Session, statement) -> int:
 
 @router.delete("/data/{target}", response_model=DataResetResult)
 def reset_data(target: str, db: Session = Depends(get_db)) -> DataResetResult:
-    if target not in {"all", "cves", "news"}:
-        raise HTTPException(status_code=400, detail="target must be one of: all, cves, news")
+    if target not in {"all", "cves", "news", "inventory"}:
+        raise HTTPException(status_code=400, detail="target must be one of: all, cves, news, inventory")
 
     deleted: dict[str, int] = {}
     if target in {"all", "cves"}:
@@ -161,7 +161,9 @@ def reset_data(target: str, db: Session = Depends(get_db)) -> DataResetResult:
         deleted["vulnerabilities"] = _delete_count(db, delete(Vulnerability))
     if target in {"all", "news"}:
         deleted["articles"] = _delete_count(db, delete(Article))
-    if target == "all":
+    if target in {"all", "inventory"}:
+        if target == "inventory":
+            deleted["detections"] = _delete_count(db, delete(Detection))
         deleted["endpoint_snapshots"] = _delete_count(db, delete(EndpointSnapshot))
 
     db.add(AuditLog(action="data_reset", target=target, detail=deleted))
