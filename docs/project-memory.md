@@ -68,6 +68,20 @@ Build a Web + Dashboard system that collects security news and vulnerability dat
   `https://<server>/plugin/products/gateway/graphql`
 - Phase 1 uses read-only queries only.
 
+## Structured Intelligence Model
+
+- Security News and CVE records should remain source documents, not catch-all IOC containers.
+- Future object extraction should separate:
+  - `content`: source type (`news` or `cve`), title, risk, summary/body, source URL, publication time.
+  - `entities`: semantic objects such as attacker, victim sector, vendor, software, version, vulnerability name, and CVE IDs.
+  - `iocs`: detection indicators such as IP, domain, URL, hash, file, process, and command line.
+  - `inventory`: internal Tanium endpoint assets and software inventory.
+  - `detections`: matching results between CVE/entity/IOC objects and internal inventory or endpoint evidence.
+- IP, domain, hash, file, process, and command line values should not be modeled as default CVE/News fields. They should be extracted into IOC records only when the source actually contains them.
+- CVE-focused extraction should prioritize CVE ID, affected vendor/product/software/version, CVSS/EPSS/KEV, CPE/CWE/reference data, and matching hints for Tanium inventory.
+- News-focused extraction should prioritize threat category, attacker, victim sector, affected software, mentioned CVEs, and optional IOC records.
+- Extracted objects should preserve source linkage and extraction confidence so reports, Tanium queries, IOC exports, and future STIX/TAXII/Sigma/YARA-style integrations can reuse the same normalized data.
+
 ## Change Log
 
 - 2026-07-03: Initial MVP scope, implementation order, environment assessment, and Tanium safety rules recorded.
@@ -97,3 +111,4 @@ Build a Web + Dashboard system that collects security news and vulnerability dat
 - 2026-07-07: Dashboard CVE panel label changed back to "CVE / KEV" with centered body cells for CVE and EPSS. Security News summary display now also removes plain `번역:` prefixes. Settings now includes a Data Management section with confirmed deletion actions for all collected data, CVE data, or Security News data while preserving settings and source links.
 - 2026-07-07: Data Management now also supports deleting only Tanium Inventory data; related detections are deleted first to avoid endpoint reference conflicts. Dashboard CVE and EPSS body cells use flex/grid centering to keep values centered in their columns.
 - 2026-07-07: Settings top action bar now includes a Summarize button that runs summaries using the configured recent-day window and existing-summary option. CVE and Security News list header/filter areas are sticky during page scroll; Security News keeps the News/KISA segmented selector in the sticky region.
+- 2026-07-07: Confirmed structured intelligence direction: keep CVE/News as source documents, extract semantic entities separately, and manage IP/domain/hash/file/process/commandline as IOC objects only when present in source content.
