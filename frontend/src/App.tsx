@@ -104,6 +104,7 @@ function cleanSummaryText(value?: string | null) {
   if (!value) return "";
   return value
     .replace(/\*\*\s*\[?번역\]?\s*\*\*/gi, "")
+    .replace(/\[\s*(?:보안\s*)?요약\s*\]|\[\s*security\s+summary\s*\]/gi, "")
     .replace(/^\s*\[?번역\]?\s*[:：-]?\s*/gim, "")
     .replace(/^\s*\*\*\s*(제목|본문)\s*[:：,]\s*/gim, "")
     .replace(/^\s*\*\*\s*(제목|본문)\s*[:：,]?\s*\*\*\s*/gim, "")
@@ -127,15 +128,25 @@ function stripLeadingTitle(text: string, title: string) {
   return value.replace(/^\n+/, "").trim();
 }
 
+const summaryMarkerPattern = /\[\s*(?:보안\s*)?요약\s*\]|\[\s*security\s+summary\s*\]/i;
+
+function shouldShowSourceExcerpt(excerpt: string, summary: string) {
+  if (!excerpt || excerpt === summary) return false;
+  const compactExcerpt = excerpt.replace(/\s+/g, " ").trim();
+  const compactSummary = summary.replace(/\s+/g, " ").trim();
+  if (!compactExcerpt || compactSummary.includes(compactExcerpt)) return false;
+  return compactExcerpt.length >= 90;
+}
+
 function articleDisplay(article: Article) {
   const summarySource = article.summary || "";
   const rawSource = article.raw_excerpt || "";
-  const summaryParts = summarySource.split(/\[요약\]/i);
+  const summaryParts = summarySource.split(summaryMarkerPattern);
   const hasEmbeddedSummary = summaryParts.length > 1;
   const title = cleanSummaryText(article.title);
   const sourceExcerpt = stripLeadingTitle(cleanSummaryText(hasEmbeddedSummary ? summaryParts.slice(0, -1).join("\n") : rawSource), title);
   const summary = stripLeadingTitle(cleanSummaryText(hasEmbeddedSummary ? summaryParts[summaryParts.length - 1] : summarySource), title) || sourceExcerpt || "원문 링크 확인이 필요합니다.";
-  const excerpt = sourceExcerpt && sourceExcerpt !== summary ? sourceExcerpt : "";
+  const excerpt = shouldShowSourceExcerpt(sourceExcerpt, summary) ? sourceExcerpt : "";
   return {
     title,
     summary,
