@@ -405,37 +405,39 @@ export default function App() {
 
         {route === "cves" && (
           <section>
-            <PageTitle
-              title="CVE"
-              description="수집한 CVE, KEV, EPSS, 영향 단말 후보를 게시글 형태로 확인합니다."
-              badge={`${state.summary?.vulnerability_count ?? state.vulnerabilities.length} CVEs`}
-              tone="critical"
-            />
-            <ListToolbar>
-              <ListControls
-                search={cveSearch}
-                searchLabel="CVE 검색"
-                sort={cveSort}
-                onSearchChange={(value) => {
-                  setCveSearch(value);
-                  setCvePage(1);
-                }}
-                onSortChange={(value) => {
-                  setCveSort(value);
-                  setCvePage(1);
-                }}
+            <div className="sticky-list-header">
+              <PageTitle
+                title="CVE"
+                description="수집한 CVE, KEV, EPSS, 영향 단말 후보를 게시글 형태로 확인합니다."
+                badge={`${state.summary?.vulnerability_count ?? state.vulnerabilities.length} CVEs`}
+                tone="critical"
               />
-              <Pager
-                page={cvePage}
-                pageSize={cvePageSize}
-                total={state.vulnerabilityTotal}
-                onPageChange={setCvePage}
-                onPageSizeChange={(value) => {
-                  setCvePageSize(value);
-                  setCvePage(1);
-                }}
-              />
-            </ListToolbar>
+              <ListToolbar>
+                <ListControls
+                  search={cveSearch}
+                  searchLabel="CVE 검색"
+                  sort={cveSort}
+                  onSearchChange={(value) => {
+                    setCveSearch(value);
+                    setCvePage(1);
+                  }}
+                  onSortChange={(value) => {
+                    setCveSort(value);
+                    setCvePage(1);
+                  }}
+                />
+                <Pager
+                  page={cvePage}
+                  pageSize={cvePageSize}
+                  total={state.vulnerabilityTotal}
+                  onPageChange={setCvePage}
+                  onPageSizeChange={(value) => {
+                    setCvePageSize(value);
+                    setCvePage(1);
+                  }}
+                />
+              </ListToolbar>
+            </div>
             <div className="page-grid">
               {state.vulnerabilities.map((item) => (
                 <article key={item.id} className="page-card">
@@ -488,58 +490,60 @@ export default function App() {
 
         {route === "security-news" && (
           <section>
-            <PageTitle
-              title="Security News"
-              description="수집한 보안 뉴스와 KISA 보안 공지를 분리해서 확인합니다."
-              badge={`${state.articleTotal} ${newsCategory === "kisa" ? "KISA notices" : "news"}`}
-            />
-            <div className="segmented">
-              <button
-                type="button"
-                className={newsCategory === "news" ? "active" : undefined}
-                onClick={() => {
-                  setNewsCategory("news");
-                  setNewsPage(1);
-                }}
-              >
-                News
-              </button>
-              <button
-                type="button"
-                className={newsCategory === "kisa" ? "active" : undefined}
-                onClick={() => {
-                  setNewsCategory("kisa");
-                  setNewsPage(1);
-                }}
-              >
-                KISA 보안공지
-              </button>
+            <div className="sticky-list-header">
+              <PageTitle
+                title="Security News"
+                description="수집한 보안 뉴스와 KISA 보안 공지를 분리해서 확인합니다."
+                badge={`${state.articleTotal} ${newsCategory === "kisa" ? "KISA notices" : "news"}`}
+              />
+              <div className="segmented">
+                <button
+                  type="button"
+                  className={newsCategory === "news" ? "active" : undefined}
+                  onClick={() => {
+                    setNewsCategory("news");
+                    setNewsPage(1);
+                  }}
+                >
+                  News
+                </button>
+                <button
+                  type="button"
+                  className={newsCategory === "kisa" ? "active" : undefined}
+                  onClick={() => {
+                    setNewsCategory("kisa");
+                    setNewsPage(1);
+                  }}
+                >
+                  KISA 보안공지
+                </button>
+              </div>
+              <ListToolbar>
+                <ListControls
+                  search={newsSearch}
+                  searchLabel="뉴스 검색"
+                  sort={newsSort}
+                  onSearchChange={(value) => {
+                    setNewsSearch(value);
+                    setNewsPage(1);
+                  }}
+                  onSortChange={(value) => {
+                    setNewsSort(value);
+                    setNewsPage(1);
+                  }}
+                />
+                <Pager
+                  page={newsPage}
+                  pageSize={newsPageSize}
+                  total={state.articleTotal}
+                  onPageChange={setNewsPage}
+                  onPageSizeChange={(value) => {
+                    setNewsPageSize(value);
+                    setNewsPage(1);
+                  }}
+                />
+              </ListToolbar>
             </div>
-            <ListToolbar>
-              <ListControls
-                search={newsSearch}
-                searchLabel="뉴스 검색"
-                sort={newsSort}
-                onSearchChange={(value) => {
-                  setNewsSearch(value);
-                  setNewsPage(1);
-                }}
-                onSortChange={(value) => {
-                  setNewsSort(value);
-                  setNewsPage(1);
-                }}
-              />
-              <Pager
-                page={newsPage}
-                pageSize={newsPageSize}
-                total={state.articleTotal}
-                onPageChange={setNewsPage}
-                onPageSizeChange={(value) => {
-                  setNewsPageSize(value);
-                  setNewsPage(1);
-                }}
-              />
-            </ListToolbar>
             <div className="page-grid">
               {state.articles.map((article) => (
                 <article key={article.id} className="page-card">
@@ -638,6 +642,10 @@ export default function App() {
               <button title="Collect security news" onClick={() => void runAction("News", api.collectNews)} disabled={Boolean(state.action)}>
                 <FileText size={16} />
                 <span>News</span>
+              </button>
+              <button title="Translate and summarize using the configured summary period" onClick={() => void runSummariesUpdate()} disabled={Boolean(state.action)}>
+                <FileText size={16} />
+                <span>Summarize</span>
               </button>
               <button title="Sync Tanium endpoint inventory" onClick={() => void runAction("Endpoint sync", api.taniumSyncEndpoints)} disabled={Boolean(state.action)}>
                 <Server size={16} />

@@ -372,6 +372,24 @@ button:disabled {
   gap: 8px;
 }
 
+.sticky-list-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin: -4px -2px 14px;
+  padding: 4px 2px 1px;
+  background: #0b1117;
+  border-bottom: 1px solid rgba(38, 50, 64, 0.85);
+}
+
+.sticky-list-header .section-title {
+  margin-bottom: 12px;
+}
+
+.sticky-list-header .list-toolbar {
+  margin-bottom: 12px;
+}
+
 .list-toolbar {
   display: grid;
   grid-template-columns: minmax(260px, 1fr) auto;
