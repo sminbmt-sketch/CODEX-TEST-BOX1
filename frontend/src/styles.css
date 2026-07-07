@@ -238,6 +238,15 @@ button:disabled {
   text-align: center;
 }
 
+.cve-id-cell,
+.epss-cell {
+  display: inline-flex;
+  justify-self: stretch;
+  justify-content: center;
+  text-align: center;
+  width: 100%;
+}
+
 .cve-row.header,
 .inventory-row.header {
   color: #8b98a6;
@@ -664,6 +673,34 @@ button:disabled {
 
 .summary-settings-form {
   grid-template-columns: minmax(180px, 240px) minmax(220px, 1fr) auto;
+}
+
+.data-management-card {
+  border-color: #3a2d30;
+}
+
+.data-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px;
+}
+
+.data-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.danger-button {
+  border-color: #5b272a;
+  background: #2a1519;
+  color: #ffb4ad;
+}
+
+.danger-button:hover:not(:disabled) {
+  border-color: #7b3438;
+  background: #35191e;
 }
 
 .settings-form label {

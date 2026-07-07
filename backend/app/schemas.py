@@ -30,6 +30,11 @@ class SourceCreate(BaseModel):
     enabled: bool = True
 
 
+class DataResetResult(BaseModel):
+    target: str
+    deleted: dict[str, int]
+
+
 class ArticleOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

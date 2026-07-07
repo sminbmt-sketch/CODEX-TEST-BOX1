@@ -1,6 +1,6 @@
 import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useMemo, useState } from "react";
-import { DatabaseZap, ExternalLink, FileText, Plus, Radar, RefreshCw, Search, Server, Wifi } from "lucide-react";
-import { api, type Article, type DashboardSummary, type Detection, type EndpointSnapshot, type LlmProvider, type LlmSettings, type Source, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
+import { DatabaseZap, ExternalLink, FileText, Plus, Radar, RefreshCw, Search, Server, Trash2, Wifi } from "lucide-react";
+import { api, type Article, type DashboardSummary, type DataResetTarget, type Detection, type EndpointSnapshot, type LlmProvider, type LlmSettings, type Source, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
 
 type Route = "dashboard" | "cves" | "security-news" | "tanium-inventory" | "reports" | "settings";
 
@@ -123,7 +123,8 @@ function articleSummaryBody(article: Article) {
     .split("\n")
     .map((line) => line.trim().replace(/\*\*/g, ""))
     .filter((line) => line && !/^제목\s*[:：,]/.test(line))
-    .map((line) => line.replace(/^본문\s*[:：,]\s*/, ""))
+    .map((line) => line.replace(/^본문\s*[:：,]\s*/, "").replace(/^번역\s*[:：-]\s*/, ""))
+    .filter(Boolean)
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -278,6 +279,12 @@ export default function App() {
     await runAction(`Delete source ${source.name}`, () => api.deleteSource(source.id));
   }
 
+  async function resetData(target: DataResetTarget, label: string) {
+    const confirmed = window.confirm(`${label} 데이터를 삭제합니다. 설정과 수집 소스 링크는 유지됩니다. 계속할까요?`);
+    if (!confirmed) return;
+    await runAction(`Delete ${label}`, () => api.resetData(target));
+  }
+
   useEffect(() => {
     const onHashChange = () => setRoute(routeFromHash());
     window.addEventListener("hashchange", onHashChange);
@@ -349,7 +356,7 @@ export default function App() {
             <section className="dashboard-grid">
               <article className="panel">
                 <div className="panel-header">
-                  <h2>last CVE / KEV</h2>
+                  <h2>CVE / KEV</h2>
                   <a className="link-button" href="#/cves">
                     CVE / KEV 전체 보기
                   </a>
@@ -363,11 +370,11 @@ export default function App() {
                   </div>
                   {(state.summary?.top_risks || []).slice(0, 4).map((item) => (
                     <div key={item.id} className="cve-row">
-                      <strong className="center-cell">{item.cve_id}</strong>
+                      <strong className="center-cell cve-id-cell">{item.cve_id}</strong>
                       <span className={item.kev ? "chip critical" : severityClass(item.cvss_severity)} title={item.cvss_severity || undefined}>
                         {item.kev ? "KEV" : severityLabel(item.cvss_severity)}
                       </span>
-                      <span className="center-cell">{epss(item.epss_score)}</span>
+                      <span className="center-cell epss-cell">{epss(item.epss_score)}</span>
                       <span>{vulnerabilitySummary(item)}</span>
                     </div>
                   ))}
@@ -645,6 +652,33 @@ export default function App() {
                 <span>Test Gateway</span>
               </button>
             </div>
+            <article className="page-card settings-card data-management-card">
+              <header>
+                <div>
+                  <h3>Data Management</h3>
+                  <p>수집된 운영 데이터를 삭제합니다. LLM 설정과 수집 소스 링크는 유지됩니다.</p>
+                </div>
+                <span className="pill neutral">Reset</span>
+              </header>
+              <div className="data-actions">
+                <button type="button" className="danger-button" onClick={() => void resetData("all", "전체")} disabled={Boolean(state.action)}>
+                  <Trash2 size={16} />
+                  <span>데이터 리셋</span>
+                </button>
+                <button type="button" onClick={() => void resetData("cves", "CVE")} disabled={Boolean(state.action)}>
+                  <Trash2 size={16} />
+                  <span>CVE 삭제</span>
+                </button>
+                <button type="button" onClick={() => void resetData("news", "Security News")} disabled={Boolean(state.action)}>
+                  <Trash2 size={16} />
+                  <span>Security News 삭제</span>
+                </button>
+              </div>
+              <div className="settings-note">
+                <span>전체: CVE, Security News, Tanium Inventory, Detection 삭제</span>
+                <span>부분: CVE 또는 Security News만 삭제</span>
+              </div>
+            </article>
             <div className="source-settings-grid">
               <SourceSettingsCard
                 title="CVE Update Sources"

@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Body, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.db.models import LlmSetting, Source
+from app.db.models import Article, AuditLog, Detection, EndpointSnapshot, LlmSetting, Source, Vulnerability
 from app.db.session import get_db
-from app.schemas import LlmSettingOut, LlmSettingUpdate, LlmTestResult, SourceCreate, SourceOut, SourceUpdate
+from app.schemas import DataResetResult, LlmSettingOut, LlmSettingUpdate, LlmTestResult, SourceCreate, SourceOut, SourceUpdate
 from app.services.news_sources import DEFAULT_HTML_SOURCES, DEFAULT_NEWS_FEEDS
 from app.services.llm import LlmRuntimeConfig, SummaryService, default_base_url, default_model, get_llm_setting, resolve_llm_config, sanitize_llm_error
 from app.services.vulnerability_sources import CISA_KEV_URL, EPSS_URL, NVD_CVE_URL
@@ -143,6 +143,30 @@ def disable_source(source_id: int, db: Session = Depends(get_db)) -> SourceOut:
     db.commit()
     db.refresh(source)
     return SourceOut.model_validate(source)
+
+
+def _delete_count(db: Session, statement) -> int:
+    result = db.execute(statement)
+    return int(result.rowcount or 0)
+
+
+@router.delete("/data/{target}", response_model=DataResetResult)
+def reset_data(target: str, db: Session = Depends(get_db)) -> DataResetResult:
+    if target not in {"all", "cves", "news"}:
+        raise HTTPException(status_code=400, detail="target must be one of: all, cves, news")
+
+    deleted: dict[str, int] = {}
+    if target in {"all", "cves"}:
+        deleted["detections"] = _delete_count(db, delete(Detection))
+        deleted["vulnerabilities"] = _delete_count(db, delete(Vulnerability))
+    if target in {"all", "news"}:
+        deleted["articles"] = _delete_count(db, delete(Article))
+    if target == "all":
+        deleted["endpoint_snapshots"] = _delete_count(db, delete(EndpointSnapshot))
+
+    db.add(AuditLog(action="data_reset", target=target, detail=deleted))
+    db.commit()
+    return DataResetResult(target=target, deleted=deleted)
 
 
 @router.put("/llm", response_model=LlmSettingOut)

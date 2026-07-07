@@ -141,6 +141,13 @@ export type LlmTestResult = {
   message: string;
 };
 
+export type DataResetTarget = "all" | "cves" | "news";
+
+export type DataResetResult = {
+  target: DataResetTarget;
+  deleted: Record<string, number>;
+};
+
 type ListParams = {
   limit?: number;
   offset?: number;
@@ -203,6 +210,7 @@ export const api = {
   updateSource: (id: number, payload: SourceUpdate) =>
     request<Source>(`/api/settings/sources/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
   deleteSource: (id: number) => request<Source>(`/api/settings/sources/${id}`, { method: "DELETE" }),
+  resetData: (target: DataResetTarget) => request<DataResetResult>(`/api/settings/data/${target}`, { method: "DELETE" }),
   updateLlmSettings: (payload: LlmSettingsUpdate) =>
     request<LlmSettings>("/api/settings/llm", { method: "PUT", body: JSON.stringify(payload) }),
   testLlmSettings: (payload?: LlmSettingsUpdate) =>
