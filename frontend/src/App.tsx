@@ -114,21 +114,33 @@ function cleanSummaryText(value?: string | null) {
     .trim();
 }
 
-function articleSummaryBody(article: Article) {
-  const raw = article.summary || article.raw_excerpt;
-  if (!raw) return "원문 링크 확인이 필요합니다.";
-  const body = raw
-    .replace(/\*\*\s*\[?번역\]?\s*\*\*/gi, "")
-    .replace(/^\s*\[?번역\]?\s*[:：-]?\s*/gim, "")
-    .split("\n")
-    .map((line) => line.trim().replace(/\*\*/g, ""))
-    .filter((line) => line && !/^제목\s*[:：,]/.test(line))
-    .map((line) => line.replace(/^본문\s*[:：,]\s*/, "").replace(/^번역\s*[:：-]\s*/, ""))
-    .filter(Boolean)
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-  return body || "원문 링크 확인이 필요합니다.";
+function stripLeadingTitle(text: string, title: string) {
+  const normalizedTitle = cleanSummaryText(title);
+  let value = text.trim();
+  if (normalizedTitle && value.startsWith(normalizedTitle)) {
+    value = value.slice(normalizedTitle.length).trim();
+  }
+  const lines = value.split("\n").map((line) => line.trim()).filter(Boolean);
+  if (lines.length > 1 && lines[0].length <= 120 && !/[.!?。]$/.test(lines[0])) {
+    value = lines.slice(1).join("\n").trim();
+  }
+  return value.replace(/^\n+/, "").trim();
+}
+
+function articleDisplay(article: Article) {
+  const summarySource = article.summary || "";
+  const rawSource = article.raw_excerpt || "";
+  const summaryParts = summarySource.split(/\[요약\]/i);
+  const hasEmbeddedSummary = summaryParts.length > 1;
+  const title = cleanSummaryText(article.title);
+  const sourceExcerpt = stripLeadingTitle(cleanSummaryText(hasEmbeddedSummary ? summaryParts.slice(0, -1).join("\n") : rawSource), title);
+  const summary = stripLeadingTitle(cleanSummaryText(hasEmbeddedSummary ? summaryParts[summaryParts.length - 1] : summarySource), title) || sourceExcerpt || "원문 링크 확인이 필요합니다.";
+  const excerpt = sourceExcerpt && sourceExcerpt !== summary ? sourceExcerpt : "";
+  return {
+    title,
+    summary,
+    excerpt,
+  };
 }
 
 export default function App() {
@@ -393,7 +405,7 @@ export default function App() {
                   {(state.summary?.latest_articles || []).slice(0, 3).map((item) => (
                     <article key={item.url}>
                       <strong>{item.title}</strong>
-                      <p>{articleSummaryBody(item)}</p>
+                      <p>{articleDisplay(item).summary}</p>
                     </article>
                   ))}
                   {!state.summary?.latest_articles.length && <div className="empty block">No news summary</div>}
@@ -545,42 +557,42 @@ export default function App() {
               </ListToolbar>
             </div>
             <div className="page-grid">
-              {state.articles.map((article) => (
-                <article key={article.id} className="page-card">
-                  <header>
-                    <div>
-                      <h3>
-                        <a href={article.url} target="_blank" rel="noreferrer">
-                          {article.title} <ExternalLink size={13} />
-                        </a>
-                      </h3>
-                      <p>
-                        {article.source?.name || "Source"} · {formatDate(article.published_at)}
-                      </p>
+              {state.articles.map((article) => {
+                const display = articleDisplay(article);
+                return (
+                  <article key={article.id} className="page-card">
+                    <header>
+                      <div>
+                        <h3>
+                          <a href={article.url} target="_blank" rel="noreferrer">
+                            {article.title} <ExternalLink size={13} />
+                          </a>
+                        </h3>
+                        <p>
+                          {article.source?.name || "Source"} · {formatDate(article.published_at)}
+                        </p>
+                      </div>
+                      <span className="pill neutral">{article.source?.kind || "news"}</span>
+                    </header>
+                    <div className="body">
+                      <article className="post news-summary-post">
+                        <h4>요약</h4>
+                        <p className="summary-primary">{display.summary}</p>
+                        {display.excerpt && (
+                          <div className="source-excerpt">
+                            <strong>원문 일부</strong>
+                            <p>{display.excerpt}</p>
+                          </div>
+                        )}
+                        <div className="meta">
+                          <span>원문 링크</span>
+                          <span>{article.source?.kind || "RSS"}</span>
+                        </div>
+                      </article>
                     </div>
-                    <span className="pill neutral">{article.source?.kind || "news"}</span>
-                  </header>
-                  <div className="body">
-                    <article className="post">
-                      <h4>요약 내용</h4>
-                      <div className="summary-fields">
-                        <div className="summary-field">
-                          <span>제목</span>
-                          <p>{cleanSummaryText(article.title)}</p>
-                        </div>
-                        <div className="summary-field">
-                          <span>본문</span>
-                          <p>{articleSummaryBody(article)}</p>
-                        </div>
-                      </div>
-                      <div className="meta">
-                        <span>원문 링크</span>
-                        <span>RSS</span>
-                      </div>
-                    </article>
-                  </div>
-                </article>
-              ))}
+                  </article>
+                );
+              })}
               {!state.articles.length && <div className="empty block">No news data</div>}
             </div>
           </section>

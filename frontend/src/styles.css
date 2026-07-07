@@ -326,30 +326,6 @@ button:disabled {
   line-height: 1.5;
 }
 
-.summary-fields {
-  display: grid;
-  gap: 10px;
-}
-
-.summary-field {
-  display: grid;
-  grid-template-columns: 54px minmax(0, 1fr);
-  gap: 10px;
-  align-items: start;
-}
-
-.summary-field > span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 26px;
-  border: 1px solid #304153;
-  border-radius: 6px;
-  color: #b7c3cf;
-  font-size: 12px;
-  font-weight: 780;
-}
-
 .brief p,
 .post p,
 .cve-row span:last-child {
@@ -573,6 +549,34 @@ button:disabled {
   margin: 0 0 8px;
   color: #f0f5f9;
   font-size: 14px;
+}
+
+.news-summary-post {
+  display: grid;
+  gap: 12px;
+}
+
+.summary-primary {
+  color: #d9e3ec;
+  font-size: 14px;
+}
+
+.source-excerpt {
+  border-top: 1px solid #263240;
+  padding-top: 10px;
+}
+
+.source-excerpt strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #8b98a6;
+  font-size: 12px;
+  font-weight: 780;
+}
+
+.source-excerpt p {
+  color: #7f8c98;
+  font-size: 12px;
 }
 
 .meta {
