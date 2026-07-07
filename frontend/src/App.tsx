@@ -182,7 +182,8 @@ export default function App() {
   });
   const [summaryDays, setSummaryDays] = useState(7);
   const [includeExistingSummaries, setIncludeExistingSummaries] = useState(false);
-  const [nvdYear, setNvdYear] = useState(currentYear);
+  const [nvdStartYear, setNvdStartYear] = useState(currentYear);
+  const [nvdEndYear, setNvdEndYear] = useState(currentYear);
   const [llmForm, setLlmForm] = useState({
     provider: "disabled" as LlmProvider,
     baseUrl: "",
@@ -289,7 +290,9 @@ export default function App() {
   }
 
   async function runNvdYearUpdate() {
-    await runAction(`NVD ${nvdYear}`, () => api.collectNvdYear(nvdYear));
+    const startYear = Math.min(nvdStartYear, nvdEndYear);
+    const endYear = Math.max(nvdStartYear, nvdEndYear);
+    await runAction(`NVD ${startYear}-${endYear}`, () => api.collectNvdYear(startYear, endYear));
   }
 
   async function runSummariesUpdate() {
@@ -672,36 +675,38 @@ export default function App() {
 
         {route === "settings" && (
           <section>
-            <PageTitle title="Settings" description="수집 주기, LLM 모델, Tanium 연결 설정을 관리하는 영역입니다." />
-            <div className="toolbar settings-top-actions">
-              <button title="Refresh dashboard" onClick={() => void load()} disabled={state.loading}>
-                <RefreshCw size={16} />
-                <span>Refresh</span>
-              </button>
-              <button title="Collect NVD, CISA KEV, and EPSS data" onClick={() => void runCveUpdate()} disabled={Boolean(state.action)}>
-                <DatabaseZap size={16} />
-                <span>CVE Update</span>
-              </button>
-              <button title="Collect security news" onClick={() => void runAction("News", api.collectNews)} disabled={Boolean(state.action)}>
-                <FileText size={16} />
-                <span>News</span>
-              </button>
-              <button title="Translate and summarize using the configured summary period" onClick={() => void runSummariesUpdate()} disabled={Boolean(state.action)}>
-                <FileText size={16} />
-                <span>Summarize</span>
-              </button>
-              <button title="Sync Tanium endpoint inventory" onClick={() => void runAction("Endpoint sync", api.taniumSyncEndpoints)} disabled={Boolean(state.action)}>
-                <Server size={16} />
-                <span>Endpoints</span>
-              </button>
-              <button title="Analyze CVE impact against Tanium inventory" onClick={() => void runAction("Impact analysis", api.taniumAnalyzeImpact)} disabled={Boolean(state.action)}>
-                <Radar size={16} />
-                <span>Analyze</span>
-              </button>
-              <button title="Run read-only Gateway test" onClick={() => void runAction("Tanium test", api.taniumTest)} disabled={Boolean(state.action)}>
-                <Wifi size={16} />
-                <span>Test Gateway</span>
-              </button>
+            <div className="sticky-list-header settings-sticky-header">
+              <PageTitle title="Settings" description="수집 주기, LLM 모델, Tanium 연결 설정을 관리하는 영역입니다." />
+              <div className="toolbar settings-top-actions">
+                <button title="Refresh dashboard" onClick={() => void load()} disabled={state.loading}>
+                  <RefreshCw size={16} />
+                  <span>Refresh</span>
+                </button>
+                <button title="Collect NVD, CISA KEV, and EPSS data" onClick={() => void runCveUpdate()} disabled={Boolean(state.action)}>
+                  <DatabaseZap size={16} />
+                  <span>CVE Update</span>
+                </button>
+                <button title="Collect security news" onClick={() => void runAction("News", api.collectNews)} disabled={Boolean(state.action)}>
+                  <FileText size={16} />
+                  <span>News</span>
+                </button>
+                <button title="Translate and summarize using the configured summary period" onClick={() => void runSummariesUpdate()} disabled={Boolean(state.action)}>
+                  <FileText size={16} />
+                  <span>Summarize</span>
+                </button>
+                <button title="Sync Tanium endpoint inventory" onClick={() => void runAction("Endpoint sync", api.taniumSyncEndpoints)} disabled={Boolean(state.action)}>
+                  <Server size={16} />
+                  <span>Endpoints</span>
+                </button>
+                <button title="Analyze CVE impact against Tanium inventory" onClick={() => void runAction("Impact analysis", api.taniumAnalyzeImpact)} disabled={Boolean(state.action)}>
+                  <Radar size={16} />
+                  <span>Analyze</span>
+                </button>
+                <button title="Run read-only Gateway test" onClick={() => void runAction("Tanium test", api.taniumTest)} disabled={Boolean(state.action)}>
+                  <Wifi size={16} />
+                  <span>Test Gateway</span>
+                </button>
+              </div>
             </div>
             <article className="page-card settings-card data-management-card">
               <header>
@@ -766,25 +771,39 @@ export default function App() {
               <header>
                 <div>
                   <h3>NVD Year Feed</h3>
-                  <p>NVD JSON 2.0 Feeds 페이지를 기준으로 선택한 연도의 CVE 전체 feed를 가져옵니다.</p>
+                  <p>NVD JSON 2.0 Feeds 페이지를 기준으로 선택한 연도 범위의 CVE 전체 feed를 가져옵니다.</p>
                 </div>
-                <span className="pill neutral">{nvdYear}</span>
+                <span className="pill neutral">{Math.min(nvdStartYear, nvdEndYear)} - {Math.max(nvdStartYear, nvdEndYear)}</span>
               </header>
               <div className="settings-form nvd-year-form">
                 <label>
-                  CVE 연도
+                  최소 연도
                   <input
                     type="number"
                     min={2002}
                     max={currentYear}
-                    value={nvdYear}
-                    onChange={(event) => setNvdYear(Number(event.target.value))}
+                    value={nvdStartYear}
+                    onChange={(event) => setNvdStartYear(Number(event.target.value))}
+                  />
+                </label>
+                <label>
+                  최대 연도
+                  <input
+                    type="number"
+                    min={2002}
+                    max={currentYear}
+                    value={nvdEndYear}
+                    onChange={(event) => setNvdEndYear(Number(event.target.value))}
                   />
                 </label>
                 <div className="settings-actions">
-                  <button title="Collect NVD CVE JSON feed for selected year" onClick={() => void runNvdYearUpdate()} disabled={Boolean(state.action) || nvdYear < 2002 || nvdYear > currentYear}>
+                  <button
+                    title="Collect NVD CVE JSON feeds for selected year range"
+                    onClick={() => void runNvdYearUpdate()}
+                    disabled={Boolean(state.action) || nvdStartYear < 2002 || nvdEndYear < 2002 || nvdStartYear > currentYear || nvdEndYear > currentYear}
+                  >
                     <DatabaseZap size={16} />
-                    <span>Year Update</span>
+                    <span>Year Range Update</span>
                   </button>
                 </div>
               </div>

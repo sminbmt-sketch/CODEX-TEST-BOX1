@@ -711,8 +711,12 @@ button:disabled {
 }
 
 .nvd-year-form {
-  grid-template-columns: minmax(160px, 220px) auto;
+  grid-template-columns: minmax(140px, 200px) minmax(140px, 200px) auto;
   align-items: end;
+}
+
+.settings-sticky-header {
+  margin-bottom: 14px;
 }
 
 .data-management-card {

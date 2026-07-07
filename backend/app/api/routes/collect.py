@@ -28,14 +28,26 @@ async def run_nvd_collection(
 
 @router.post("/nvd/year", response_model=CollectionResult)
 async def run_nvd_year_collection(
-    year: int = Query(default=datetime.now().year, ge=2002, le=datetime.now().year),
+    year: int | None = Query(default=None, ge=2002, le=datetime.now().year),
+    start_year: int | None = Query(default=None, ge=2002, le=datetime.now().year),
+    end_year: int | None = Query(default=None, ge=2002, le=datetime.now().year),
     db: Session = Depends(get_db),
 ) -> CollectionResult:
+    start = start_year or year or datetime.now().year
+    end = end_year or year or start
+    if start > end:
+        raise HTTPException(status_code=400, detail="start_year must be less than or equal to end_year")
     try:
-        fetched, changed = await collect_nvd_year_feed(db, year=year)
+        fetched = 0
+        changed = 0
+        for feed_year in range(start, end + 1):
+            year_fetched, year_changed = await collect_nvd_year_feed(db, year=feed_year)
+            fetched += year_fetched
+            changed += year_changed
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"NVD year feed collection failed: {exc}") from exc
-    return CollectionResult(source=f"NVD CVE {year}", fetched=fetched, created_or_updated=changed)
+    source = f"NVD CVE {start}" if start == end else f"NVD CVE {start}-{end}"
+    return CollectionResult(source=source, fetched=fetched, created_or_updated=changed)
 
 
 @router.post("/cisa-kev", response_model=CollectionResult)
