@@ -92,3 +92,4 @@ Build a Web + Dashboard system that collects security news and vulnerability dat
 - 2026-07-06: Gemini LLM default changed to `gemini-3.1-flash-lite` for lower-latency, cost-sensitive summary work.
 - 2026-07-06: Tanium Inventory now defaults to the full collected endpoint inventory instead of detection-only endpoints, showing Host Name, IP, MAC, Operating System, and Platform.
 - 2026-07-06: Security News page now separates general News and KISA security notices. Settings now includes editable source-link sections for CVE Update sources and News sources; deleting a source disables it so collectors skip it without recreating it.
+- 2026-07-07: Settings source sections now support adding new CVE Update and News source links. Dashboard High Priority CVE / KEV severity chips now use compact normalized labels and fixed chip sizing to avoid distorted badges when source severity text is long.

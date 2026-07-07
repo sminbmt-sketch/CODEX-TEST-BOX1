@@ -19,6 +19,13 @@ export type SourceUpdate = {
   enabled?: boolean | null;
 };
 
+export type SourceCreate = {
+  name: string;
+  kind: string;
+  url: string;
+  enabled: boolean;
+};
+
 export type Article = {
   id: number;
   title: string;
@@ -192,6 +199,7 @@ export const api = {
   taniumStatus: () => request<TaniumStatus>("/api/tanium/status"),
   llmSettings: () => request<LlmSettings>("/api/settings/llm"),
   sources: () => request<Source[]>("/api/settings/sources"),
+  createSource: (payload: SourceCreate) => request<Source>("/api/settings/sources", { method: "POST", body: JSON.stringify(payload) }),
   updateSource: (id: number, payload: SourceUpdate) =>
     request<Source>(`/api/settings/sources/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
   deleteSource: (id: number) => request<Source>(`/api/settings/sources/${id}`, { method: "DELETE" }),

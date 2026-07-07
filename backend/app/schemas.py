@@ -23,6 +23,13 @@ class SourceUpdate(BaseModel):
     enabled: bool | None = None
 
 
+class SourceCreate(BaseModel):
+    name: str
+    kind: str
+    url: str
+    enabled: bool = True
+
+
 class ArticleOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import LlmSetting, Source
 from app.db.session import get_db
-from app.schemas import LlmSettingOut, LlmSettingUpdate, LlmTestResult, SourceOut, SourceUpdate
+from app.schemas import LlmSettingOut, LlmSettingUpdate, LlmTestResult, SourceCreate, SourceOut, SourceUpdate
 from app.services.news_sources import DEFAULT_HTML_SOURCES, DEFAULT_NEWS_FEEDS
 from app.services.llm import LlmRuntimeConfig, SummaryService, default_base_url, default_model, get_llm_setting, resolve_llm_config, sanitize_llm_error
 from app.services.vulnerability_sources import CISA_KEV_URL, EPSS_URL, NVD_CVE_URL
@@ -93,6 +93,27 @@ def list_sources(db: Session = Depends(get_db)) -> list[SourceOut]:
     ensure_default_sources(db)
     rows = db.scalars(select(Source).order_by(Source.kind.asc(), Source.name.asc())).all()
     return [SourceOut.model_validate(row) for row in rows]
+
+
+@router.post("/sources", response_model=SourceOut)
+def create_source(payload: SourceCreate, db: Session = Depends(get_db)) -> SourceOut:
+    name = payload.name.strip()
+    kind = payload.kind.strip()
+    url = payload.url.strip()
+    if not name or not kind or not url:
+        raise HTTPException(status_code=400, detail="Source name, kind, and URL are required")
+    source = Source(
+        name=name,
+        kind=kind,
+        url=url,
+        enabled=payload.enabled,
+        license_note="Store metadata, source URL, and generated summaries only.",
+        trust_score=0.7,
+    )
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+    return SourceOut.model_validate(source)
 
 
 @router.put("/sources/{source_id}", response_model=SourceOut)

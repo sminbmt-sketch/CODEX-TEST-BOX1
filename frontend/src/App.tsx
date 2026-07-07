@@ -1,5 +1,5 @@
 import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useMemo, useState } from "react";
-import { DatabaseZap, ExternalLink, FileText, Radar, RefreshCw, Search, Server, Wifi } from "lucide-react";
+import { DatabaseZap, ExternalLink, FileText, Plus, Radar, RefreshCw, Search, Server, Wifi } from "lucide-react";
 import { api, type Article, type DashboardSummary, type Detection, type EndpointSnapshot, type LlmProvider, type LlmSettings, type Source, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
 
 type Route = "dashboard" | "cves" | "security-news" | "tanium-inventory" | "reports" | "settings";
@@ -71,6 +71,15 @@ function severityClass(severity?: string | null) {
   return "chip neutral";
 }
 
+function severityLabel(severity?: string | null) {
+  const value = severity?.trim().toLowerCase();
+  if (value === "critical") return "CRITICAL";
+  if (value === "high") return "HIGH";
+  if (value === "medium") return "MEDIUM";
+  if (value === "low") return "LOW";
+  return "N/A";
+}
+
 function epss(value?: number | null) {
   return value != null ? `${Math.round(value * 1000) / 10}%` : "-";
 }
@@ -104,6 +113,10 @@ export default function App() {
   const [newsSort, setNewsSort] = useState<"date" | "name">("date");
   const [newsCategory, setNewsCategory] = useState<"news" | "kisa">("news");
   const [sourceDrafts, setSourceDrafts] = useState<Record<number, { name: string; kind: string; url: string; enabled: boolean }>>({});
+  const [newSourceDrafts, setNewSourceDrafts] = useState<Record<"cve" | "news", { name: string; kind: string; url: string; enabled: boolean }>>({
+    cve: { name: "", kind: "vulnerability", url: "", enabled: true },
+    news: { name: "", kind: "rss", url: "", enabled: true },
+  });
   const [summaryDays, setSummaryDays] = useState(7);
   const [includeExistingSummaries, setIncludeExistingSummaries] = useState(false);
   const [llmForm, setLlmForm] = useState({
@@ -221,6 +234,16 @@ export default function App() {
     await runAction(`Save source ${source.name}`, () => api.updateSource(source.id, draft));
   }
 
+  async function createSource(group: "cve" | "news") {
+    const draft = newSourceDrafts[group];
+    if (!draft.name.trim() || !draft.kind.trim() || !draft.url.trim()) return;
+    await runAction(`Add source ${draft.name}`, () => api.createSource(draft));
+    setNewSourceDrafts((current) => ({
+      ...current,
+      [group]: { name: "", kind: group === "cve" ? "vulnerability" : "rss", url: "", enabled: true },
+    }));
+  }
+
   async function deleteSource(source: Source) {
     await runAction(`Delete source ${source.name}`, () => api.deleteSource(source.id));
   }
@@ -250,8 +273,8 @@ export default function App() {
     ];
   }, [state.summary, state.tanium]);
 
-  const cveSources = state.sources.filter((source) => ["NVD", "CISA KEV", "FIRST EPSS"].includes(source.name));
-  const newsSources = state.sources.filter((source) => !["NVD", "CISA KEV", "FIRST EPSS"].includes(source.name));
+  const cveSources = state.sources.filter((source) => source.kind === "vulnerability");
+  const newsSources = state.sources.filter((source) => source.kind !== "vulnerability");
 
   return (
     <main className="ops-app">
@@ -311,7 +334,9 @@ export default function App() {
                   {(state.summary?.top_risks || []).slice(0, 4).map((item) => (
                     <div key={item.id} className="cve-row">
                       <strong>{item.cve_id}</strong>
-                      <span className={item.kev ? "chip critical" : severityClass(item.cvss_severity)}>{item.kev ? "KEV" : item.cvss_severity || "-"}</span>
+                      <span className={item.kev ? "chip critical" : severityClass(item.cvss_severity)} title={item.cvss_severity || undefined}>
+                        {item.kev ? "KEV" : severityLabel(item.cvss_severity)}
+                      </span>
                       <span>{epss(item.epss_score)}</span>
                       <span>{vulnerabilitySummary(item)}</span>
                     </div>
@@ -594,6 +619,9 @@ export default function App() {
                 sources={cveSources}
                 drafts={sourceDrafts}
                 setDrafts={setSourceDrafts}
+                newDraft={newSourceDrafts.cve}
+                setNewDraft={(draft) => setNewSourceDrafts((current) => ({ ...current, cve: draft }))}
+                onCreate={() => createSource("cve")}
                 onSave={saveSource}
                 onDelete={deleteSource}
                 actionDisabled={Boolean(state.action)}
@@ -604,6 +632,9 @@ export default function App() {
                 sources={newsSources}
                 drafts={sourceDrafts}
                 setDrafts={setSourceDrafts}
+                newDraft={newSourceDrafts.news}
+                setNewDraft={(draft) => setNewSourceDrafts((current) => ({ ...current, news: draft }))}
+                onCreate={() => createSource("news")}
                 onSave={saveSource}
                 onDelete={deleteSource}
                 actionDisabled={Boolean(state.action)}
@@ -775,6 +806,9 @@ function SourceSettingsCard({
   sources,
   drafts,
   setDrafts,
+  newDraft,
+  setNewDraft,
+  onCreate,
   onSave,
   onDelete,
   actionDisabled,
@@ -784,10 +818,15 @@ function SourceSettingsCard({
   sources: Source[];
   drafts: Record<number, { name: string; kind: string; url: string; enabled: boolean }>;
   setDrafts: Dispatch<SetStateAction<Record<number, { name: string; kind: string; url: string; enabled: boolean }>>>;
+  newDraft: { name: string; kind: string; url: string; enabled: boolean };
+  setNewDraft: (draft: { name: string; kind: string; url: string; enabled: boolean }) => void;
+  onCreate: () => Promise<void>;
   onSave: (source: Source) => Promise<void>;
   onDelete: (source: Source) => Promise<void>;
   actionDisabled: boolean;
 }) {
+  const addDisabled = actionDisabled || !newDraft.name.trim() || !newDraft.kind.trim() || !newDraft.url.trim();
+
   return (
     <article className="page-card settings-card source-card">
       <header>
@@ -798,6 +837,34 @@ function SourceSettingsCard({
         <span className="pill neutral">{sources.filter((source) => source.enabled).length} active</span>
       </header>
       <div className="source-list">
+        <div className="source-row source-add-row">
+          <label>
+            Name
+            <input value={newDraft.name} onChange={(event) => setNewDraft({ ...newDraft, name: event.target.value })} placeholder="Source name" />
+          </label>
+          <label>
+            Kind
+            <input value={newDraft.kind} onChange={(event) => setNewDraft({ ...newDraft, kind: event.target.value })} placeholder="rss" />
+          </label>
+          <label className="source-url-field">
+            URL
+            <input value={newDraft.url} onChange={(event) => setNewDraft({ ...newDraft, url: event.target.value })} placeholder="https://..." />
+          </label>
+          <label className="check-field source-enabled">
+            <input
+              type="checkbox"
+              checked={newDraft.enabled}
+              onChange={(event) => setNewDraft({ ...newDraft, enabled: event.target.checked })}
+            />
+            Enabled
+          </label>
+          <div className="source-actions">
+            <button type="button" className="source-add-button" onClick={() => void onCreate()} disabled={addDisabled}>
+              <Plus size={14} />
+              링크 추가
+            </button>
+          </div>
+        </div>
         {sources.map((source) => {
           const draft = drafts[source.id] || { name: source.name, kind: source.kind, url: source.url || "", enabled: source.enabled };
           return (
