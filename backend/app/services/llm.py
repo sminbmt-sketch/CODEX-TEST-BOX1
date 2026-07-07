@@ -11,6 +11,10 @@ from app.db.models import Article, LlmSetting, Vulnerability
 
 THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
 HANGUL_RE = re.compile(r"[가-힣]")
+SUMMARY_LABEL_RE = re.compile(
+    r"^\s*(?:[-*]\s*)?(?:\*\*)?\s*(?:\[?\s*)?(?:보안\s*)?(?:이슈\s*)?요약(?:\s*\]|\s*:|\s*：|\s*-)?(?:\*\*)?\s*",
+    re.IGNORECASE,
+)
 SUMMARY_RECENT_DAYS = 7
 DEFAULT_LLM_BASE_URLS = {
     "ollama": "http://localhost:11434/v1",
@@ -91,12 +95,17 @@ class SummaryService:
             "You are a Korean security analyst. Always answer in Korean only. "
             "First translate the meaningful English source text into Korean, then summarize the translated content. "
             "Write a 1-5 line Korean summary focused on security impact and action. "
+            "Return only the summary sentences. Do not add labels, headings, prefixes, bullets, markdown, or bracketed markers such as '요약:', '보안 요약:', '[요약]', or '[보안 이슈 요약]'. "
             "Use only the provided text and mention uncertainty when evidence is limited. "
             "Do not invent affected products or CVEs. "
             "Do not include chain-of-thought, hidden reasoning, or <think> blocks."
         )
         user_prompt = (
             "아래 영문 내용을 먼저 한국어로 번역한 뒤, 번역한 내용을 기반으로 핵심 보안 이슈를 1~5줄로 요약하세요.\n\n"
+            "출력 규칙:\n"
+            "- 요약 문장만 출력하세요.\n"
+            "- '요약:', '보안 요약:', '[요약]', '[보안 이슈 요약]' 같은 제목/라벨/마커를 절대 붙이지 마세요.\n"
+            "- markdown 굵게, bullet, 번호 목록을 사용하지 마세요.\n\n"
             f"Title: {title}\n\nBody:\n{body[:8000]}\n\nSources:\n" + "\n".join(source_urls)
         )
         if self.config.provider in {"ollama", "openai"}:
@@ -214,6 +223,15 @@ def _limit_summary_lines(value: str, max_lines: int = 5) -> str:
     return "\n".join(lines[:max_lines]).strip()
 
 
+def _canonicalize_summary(value: str) -> str:
+    lines = []
+    for line in THINK_BLOCK_RE.sub("", value).replace("**", "").splitlines():
+        cleaned = SUMMARY_LABEL_RE.sub("", line).strip()
+        if cleaned:
+            lines.append(cleaned)
+    return "\n".join(lines).strip()
+
+
 def _fallback_article_summary(article: Article) -> str:
     excerpt = _compact(article.raw_excerpt, 700)
     if excerpt:
@@ -230,7 +248,7 @@ def _fallback_vulnerability_summary(vulnerability: Vulnerability) -> str:
 def _usable_summary(summary: str | None, required_terms: list[str] | None = None) -> str | None:
     if not summary:
         return None
-    cleaned = summary.strip()
+    cleaned = _canonicalize_summary(summary)
     if not _has_korean_text(cleaned):
         return None
     lowered = cleaned.lower()

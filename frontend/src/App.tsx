@@ -100,11 +100,13 @@ function vulnerabilitySummary(item: Vulnerability) {
   return item.summary || item.description || "수집된 원문 링크와 CVE 메타데이터 확인이 필요합니다.";
 }
 
+const summaryMarkerPattern = /\[\s*(?:보안\s*)?(?:이슈\s*)?요약\s*\]|\[\s*security\s+summary\s*\]|^\s*(?:보안\s*)?(?:이슈\s*)?요약\s*[:：-]\s*/gim;
+
 function cleanSummaryText(value?: string | null) {
   if (!value) return "";
   return value
     .replace(/\*\*\s*\[?번역\]?\s*\*\*/gi, "")
-    .replace(/\[\s*(?:보안\s*)?요약\s*\]|\[\s*security\s+summary\s*\]/gi, "")
+    .replace(summaryMarkerPattern, "")
     .replace(/^\s*\[?번역\]?\s*[:：-]?\s*/gim, "")
     .replace(/^\s*\*\*\s*(제목|본문)\s*[:：,]\s*/gim, "")
     .replace(/^\s*\*\*\s*(제목|본문)\s*[:：,]?\s*\*\*\s*/gim, "")
@@ -128,7 +130,7 @@ function stripLeadingTitle(text: string, title: string) {
   return value.replace(/^\n+/, "").trim();
 }
 
-const summaryMarkerPattern = /\[\s*(?:보안\s*)?요약\s*\]|\[\s*security\s+summary\s*\]/i;
+const summarySplitPattern = /\[\s*(?:보안\s*)?(?:이슈\s*)?요약\s*\]|\[\s*security\s+summary\s*\]|^\s*(?:보안\s*)?(?:이슈\s*)?요약\s*[:：-]\s*/im;
 
 function shouldShowSourceExcerpt(excerpt: string, summary: string) {
   if (!excerpt || excerpt === summary) return false;
@@ -141,7 +143,7 @@ function shouldShowSourceExcerpt(excerpt: string, summary: string) {
 function articleDisplay(article: Article) {
   const summarySource = article.summary || "";
   const rawSource = article.raw_excerpt || "";
-  const summaryParts = summarySource.split(summaryMarkerPattern);
+  const summaryParts = summarySource.split(summarySplitPattern);
   const hasEmbeddedSummary = summaryParts.length > 1;
   const title = cleanSummaryText(article.title);
   const sourceExcerpt = stripLeadingTitle(cleanSummaryText(hasEmbeddedSummary ? summaryParts.slice(0, -1).join("\n") : rawSource), title);
