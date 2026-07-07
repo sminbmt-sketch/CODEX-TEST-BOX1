@@ -112,6 +112,20 @@ class CollectionResult(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class CollectionJobStatus(BaseModel):
+    job_id: str
+    status: str
+    source: str
+    start_year: int | None = None
+    end_year: int | None = None
+    current_year: int | None = None
+    fetched: int = 0
+    created_or_updated: int = 0
+    error: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
 class ImpactAnalysisResult(BaseModel):
     endpoints_fetched: int = 0
     endpoints_created_or_updated: int = 0

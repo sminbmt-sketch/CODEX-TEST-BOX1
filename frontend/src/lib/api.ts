@@ -150,6 +150,20 @@ export type DataResetResult = {
   deleted: Record<string, number>;
 };
 
+export type CollectionJobStatus = {
+  job_id: string;
+  status: string;
+  source: string;
+  start_year?: number | null;
+  end_year?: number | null;
+  current_year?: number | null;
+  fetched: number;
+  created_or_updated: number;
+  error?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+};
+
 type ListParams = {
   limit?: number;
   offset?: number;
@@ -228,7 +242,8 @@ export const api = {
   summarizeAll: (params?: SummaryParams) => request<Record<string, unknown>[]>(`/api/summaries/all${summaryQuery(params)}`, { method: "POST" }),
   collectNvd: () => request("/api/collect/nvd", { method: "POST" }),
   collectNvdYear: (startYear: number, endYear: number) =>
-    request(`/api/collect/nvd/year?start_year=${encodeURIComponent(String(startYear))}&end_year=${encodeURIComponent(String(endYear))}`, { method: "POST" }),
+    request<CollectionJobStatus>(`/api/collect/nvd/year?start_year=${encodeURIComponent(String(startYear))}&end_year=${encodeURIComponent(String(endYear))}`, { method: "POST" }),
+  nvdYearStatus: () => request<CollectionJobStatus>("/api/collect/nvd/year/status"),
   collectCisaKev: () => request("/api/collect/cisa-kev", { method: "POST" }),
   collectEpss: () => request("/api/collect/epss", { method: "POST" }),
   collectNews: () => request("/api/collect/news", { method: "POST" }),

@@ -1,6 +1,6 @@
 import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useMemo, useState } from "react";
 import { DatabaseZap, ExternalLink, FileText, Plus, Radar, RefreshCw, Search, Server, Trash2, Wifi } from "lucide-react";
-import { api, type Article, type DashboardSummary, type DataResetTarget, type Detection, type EndpointSnapshot, type LlmProvider, type LlmSettings, type Source, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
+import { api, type Article, type CollectionJobStatus, type DashboardSummary, type DataResetTarget, type Detection, type EndpointSnapshot, type LlmProvider, type LlmSettings, type Source, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
 
 type Route = "dashboard" | "cves" | "security-news" | "tanium-inventory" | "reports" | "settings";
 
@@ -15,6 +15,7 @@ type LoadState = {
   trends?: TrendReport;
   tanium?: TaniumStatus;
   llm?: LlmSettings;
+  nvdYearJob?: CollectionJobStatus;
   sources: Source[];
   loading: boolean;
   error?: string;
@@ -200,7 +201,7 @@ export default function App() {
     try {
       const cveParams = { limit: cvePageSize, offset: (cvePage - 1) * cvePageSize, q: cveSearch.trim() || undefined, sort: cveSort };
       const newsParams = { limit: newsPageSize, offset: (newsPage - 1) * newsPageSize, q: newsSearch.trim() || undefined, sort: newsSort, category: newsCategory };
-      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, sources] = await Promise.all([
+      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, sources, nvdYearJob] = await Promise.all([
         api.summary(),
         api.vulnerabilities(cveParams),
         api.vulnerabilityCount(cveParams),
@@ -212,8 +213,9 @@ export default function App() {
         api.trends(),
         api.llmSettings(),
         api.sources(),
+        api.nvdYearStatus(),
       ]);
-      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, sources, loading: false });
+      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, nvdYearJob, sources, loading: false });
       setSourceDrafts(Object.fromEntries(sources.map((source) => [source.id, { name: source.name, kind: source.kind, url: source.url || "", enabled: source.enabled }])));
       setLlmForm((current) => ({
         ...current,
@@ -810,6 +812,11 @@ export default function App() {
               <div className="settings-note">
                 <span>Source: NVD JSON Feeds</span>
                 <span>2002 - {currentYear}</span>
+                <span>Status: {state.nvdYearJob?.status || "idle"}</span>
+                {state.nvdYearJob?.current_year && <span>Current: {state.nvdYearJob.current_year}</span>}
+                <span>Fetched: {state.nvdYearJob?.fetched ?? 0}</span>
+                <span>Updated: {state.nvdYearJob?.created_or_updated ?? 0}</span>
+                {state.nvdYearJob?.error && <strong>{state.nvdYearJob.error}</strong>}
               </div>
             </article>
             <article className="page-card settings-card">
