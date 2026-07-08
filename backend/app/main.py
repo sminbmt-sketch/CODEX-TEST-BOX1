@@ -6,12 +6,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import articles, collect, dashboard, health, settings as settings_routes, summaries, tanium, vulnerabilities
 from app.core.config import settings
 from app.db.session import create_db
+from app.services.scheduler import scheduler_loop
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     create_db()
-    yield
+    import asyncio
+
+    task = asyncio.create_task(scheduler_loop())
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)

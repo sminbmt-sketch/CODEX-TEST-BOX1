@@ -129,3 +129,35 @@ class LlmSetting(Base):
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=180)
     max_tokens: Mapped[int] = mapped_column(Integer, default=512)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class AutomationSetting(Base):
+    __tablename__ = "automation_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    cve_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    news_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    frequency: Mapped[str] = mapped_column(String(32), default="daily")
+    day_of_week: Mapped[int | None] = mapped_column(Integer)
+    day_of_month: Mapped[int | None] = mapped_column(Integer)
+    run_time: Mapped[str] = mapped_column(String(5), default="09:00")
+    timezone: Mapped[str] = mapped_column(String(64), default="Asia/Seoul")
+    collection_days: Mapped[int] = mapped_column(Integer, default=7)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class EmailSetting(Base):
+    __tablename__ = "email_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    smtp_host: Mapped[str | None] = mapped_column(String(255))
+    smtp_port: Mapped[int] = mapped_column(Integer, default=587)
+    smtp_username: Mapped[str | None] = mapped_column(String(255))
+    smtp_password: Mapped[str | None] = mapped_column(Text)
+    sender: Mapped[str | None] = mapped_column(String(255))
+    recipients: Mapped[str | None] = mapped_column(Text)
+    use_tls: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

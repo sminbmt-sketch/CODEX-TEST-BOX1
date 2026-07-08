@@ -146,6 +146,37 @@ export type LlmTestResult = {
   message: string;
 };
 
+export type AutomationSettings = {
+  enabled: boolean;
+  cve_enabled: boolean;
+  news_enabled: boolean;
+  frequency: "daily" | "weekly" | "monthly";
+  day_of_week?: number | null;
+  day_of_month?: number | null;
+  run_time: string;
+  timezone: string;
+  collection_days: number;
+  last_run_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type EmailSettings = {
+  enabled: boolean;
+  smtp_host?: string | null;
+  smtp_port: number;
+  smtp_username?: string | null;
+  sender?: string | null;
+  recipients?: string | null;
+  use_tls: boolean;
+  has_password: boolean;
+  updated_at?: string | null;
+};
+
+export type EmailSettingsUpdate = EmailSettings & {
+  smtp_password?: string | null;
+  clear_password?: boolean;
+};
+
 export type DataResetTarget = "all" | "cves" | "news" | "inventory";
 
 export type DataResetResult = {
@@ -260,6 +291,12 @@ export const api = {
   articleCount: (params?: ListParams) => request<number>(`/api/articles/count${listQuery(params)}`),
   taniumStatus: () => request<TaniumStatus>("/api/tanium/status"),
   llmSettings: () => request<LlmSettings>("/api/settings/llm"),
+  automationSettings: () => request<AutomationSettings>("/api/settings/automation"),
+  updateAutomationSettings: (payload: AutomationSettings) =>
+    request<AutomationSettings>("/api/settings/automation", { method: "PUT", body: JSON.stringify(payload) }),
+  emailSettings: () => request<EmailSettings>("/api/settings/email"),
+  updateEmailSettings: (payload: EmailSettingsUpdate) =>
+    request<EmailSettings>("/api/settings/email", { method: "PUT", body: JSON.stringify(payload) }),
   sources: () => request<Source[]>("/api/settings/sources"),
   createSource: (payload: SourceCreate) => request<Source>("/api/settings/sources", { method: "POST", body: JSON.stringify(payload) }),
   updateSource: (id: number, payload: SourceUpdate) =>

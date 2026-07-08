@@ -2,9 +2,21 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
-from app.db.models import Article, AuditLog, Detection, EndpointSnapshot, LlmSetting, Source, Vulnerability
+from app.db.models import Article, AuditLog, AutomationSetting, Detection, EmailSetting, EndpointSnapshot, LlmSetting, Source, Vulnerability
 from app.db.session import get_db
-from app.schemas import DataResetResult, LlmSettingOut, LlmSettingUpdate, LlmTestResult, SourceCreate, SourceOut, SourceUpdate
+from app.schemas import (
+    AutomationSettingOut,
+    AutomationSettingUpdate,
+    DataResetResult,
+    EmailSettingOut,
+    EmailSettingUpdate,
+    LlmSettingOut,
+    LlmSettingUpdate,
+    LlmTestResult,
+    SourceCreate,
+    SourceOut,
+    SourceUpdate,
+)
 from app.services.news_sources import DEFAULT_HTML_SOURCES, DEFAULT_NEWS_FEEDS
 from app.services.llm import LlmRuntimeConfig, SummaryService, default_base_url, default_model, get_llm_setting, resolve_llm_config, sanitize_llm_error
 from app.services.vulnerability_sources import CISA_KEV_URL, EPSS_URL, NVD_CVE_URL, NVD_DATA_FEEDS_URL
@@ -87,9 +99,89 @@ def resolve_llm_config_from_payload(payload: LlmSettingUpdate, saved: LlmSetting
     )
 
 
+def get_automation_row(db: Session) -> AutomationSetting:
+    row = db.scalar(select(AutomationSetting).order_by(AutomationSetting.id.asc()))
+    if row is None:
+        row = AutomationSetting()
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+    return row
+
+
+def get_email_row(db: Session) -> EmailSetting:
+    row = db.scalar(select(EmailSetting).order_by(EmailSetting.id.asc()))
+    if row is None:
+        row = EmailSetting()
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+    return row
+
+
+def email_out(row: EmailSetting) -> EmailSettingOut:
+    return EmailSettingOut(
+        enabled=row.enabled,
+        smtp_host=row.smtp_host,
+        smtp_port=row.smtp_port,
+        smtp_username=row.smtp_username,
+        sender=row.sender,
+        recipients=row.recipients,
+        use_tls=row.use_tls,
+        has_password=bool(row.smtp_password),
+        updated_at=row.updated_at,
+    )
+
+
 @router.get("/llm", response_model=LlmSettingOut)
 def get_llm_settings(db: Session = Depends(get_db)) -> LlmSettingOut:
     return _out(get_llm_setting(db))
+
+
+@router.get("/automation", response_model=AutomationSettingOut)
+def get_automation_settings(db: Session = Depends(get_db)) -> AutomationSettingOut:
+    return AutomationSettingOut.model_validate(get_automation_row(db))
+
+
+@router.put("/automation", response_model=AutomationSettingOut)
+def update_automation_settings(payload: AutomationSettingUpdate, db: Session = Depends(get_db)) -> AutomationSettingOut:
+    row = get_automation_row(db)
+    row.enabled = payload.enabled
+    row.cve_enabled = payload.cve_enabled
+    row.news_enabled = payload.news_enabled
+    row.frequency = payload.frequency
+    row.day_of_week = payload.day_of_week
+    row.day_of_month = payload.day_of_month
+    row.run_time = payload.run_time
+    row.timezone = payload.timezone
+    row.collection_days = payload.collection_days
+    db.commit()
+    db.refresh(row)
+    return AutomationSettingOut.model_validate(row)
+
+
+@router.get("/email", response_model=EmailSettingOut)
+def get_email_settings(db: Session = Depends(get_db)) -> EmailSettingOut:
+    return email_out(get_email_row(db))
+
+
+@router.put("/email", response_model=EmailSettingOut)
+def update_email_settings(payload: EmailSettingUpdate, db: Session = Depends(get_db)) -> EmailSettingOut:
+    row = get_email_row(db)
+    row.enabled = payload.enabled
+    row.smtp_host = payload.smtp_host
+    row.smtp_port = payload.smtp_port
+    row.smtp_username = payload.smtp_username
+    row.sender = payload.sender
+    row.recipients = payload.recipients
+    row.use_tls = payload.use_tls
+    if payload.clear_password:
+        row.smtp_password = None
+    elif payload.smtp_password:
+        row.smtp_password = payload.smtp_password
+    db.commit()
+    db.refresh(row)
+    return email_out(row)
 
 
 @router.get("/sources", response_model=list[SourceOut])

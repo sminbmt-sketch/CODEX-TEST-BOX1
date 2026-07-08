@@ -1,6 +1,6 @@
 import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useMemo, useState } from "react";
-import { DatabaseZap, ExternalLink, FileText, Plus, Radar, RefreshCw, Search, Server, Trash2, Wifi } from "lucide-react";
-import { api, type Article, type CollectionJobStatus, type DashboardSummary, type DataResetTarget, type Detection, type EndpointSnapshot, type LlmProvider, type LlmSettings, type Source, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
+import { CalendarClock, DatabaseZap, ExternalLink, FileText, Mail, Plus, Radar, RefreshCw, Search, Server, Trash2, Wifi } from "lucide-react";
+import { api, type Article, type AutomationSettings, type CollectionJobStatus, type DashboardSummary, type DataResetTarget, type Detection, type EmailSettings, type EndpointSnapshot, type LlmProvider, type LlmSettings, type Source, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
 
 type Route = "dashboard" | "cves" | "security-news" | "tanium-inventory" | "reports" | "settings";
 
@@ -15,6 +15,8 @@ type LoadState = {
   trends?: TrendReport;
   tanium?: TaniumStatus;
   llm?: LlmSettings;
+  automation?: AutomationSettings;
+  email?: EmailSettings;
   nvdYearJob?: CollectionJobStatus;
   epssJob?: CollectionJobStatus;
   sources: Source[];
@@ -192,6 +194,28 @@ export default function App() {
   const [includeExistingSummaries, setIncludeExistingSummaries] = useState(false);
   const [nvdStartYear, setNvdStartYear] = useState(currentYear);
   const [nvdEndYear, setNvdEndYear] = useState(currentYear);
+  const [automationForm, setAutomationForm] = useState<AutomationSettings>({
+    enabled: false,
+    cve_enabled: true,
+    news_enabled: true,
+    frequency: "daily",
+    day_of_week: 0,
+    day_of_month: 1,
+    run_time: "09:00",
+    timezone: "Asia/Seoul",
+    collection_days: 7,
+  });
+  const [emailForm, setEmailForm] = useState({
+    enabled: false,
+    smtp_host: "",
+    smtp_port: 587,
+    smtp_username: "",
+    smtp_password: "",
+    clear_password: false,
+    sender: "",
+    recipients: "",
+    use_tls: true,
+  });
   const [llmForm, setLlmForm] = useState({
     provider: "disabled" as LlmProvider,
     baseUrl: "",
@@ -208,7 +232,7 @@ export default function App() {
     try {
       const cveParams = { limit: cvePageSize, offset: (cvePage - 1) * cvePageSize, q: cveSearch.trim() || undefined, sort: cveSort, severity: cveSeverity || undefined };
       const newsParams = { limit: newsPageSize, offset: (newsPage - 1) * newsPageSize, q: newsSearch.trim() || undefined, sort: newsSort, category: newsCategory };
-      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, sources, nvdYearJob, epssJob] = await Promise.all([
+      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, automation, email, sources, nvdYearJob, epssJob] = await Promise.all([
         api.summary(),
         api.vulnerabilities(cveParams),
         api.vulnerabilityCount(cveParams),
@@ -219,11 +243,13 @@ export default function App() {
         api.detections(),
         api.trends(),
         api.llmSettings(),
+        api.automationSettings(),
+        api.emailSettings(),
         api.sources(),
         api.nvdYearStatus(),
         api.epssStatus(),
       ]);
-      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, nvdYearJob, epssJob, sources, loading: false });
+      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, automation, email, nvdYearJob, epssJob, sources, loading: false });
       setSourceDrafts(Object.fromEntries(sources.map((source) => [source.id, { name: source.name, kind: source.kind, url: source.url || "", enabled: source.enabled }])));
       setLlmForm((current) => ({
         ...current,
@@ -235,6 +261,18 @@ export default function App() {
         timeoutSeconds: llm.timeout_seconds,
         maxTokens: llm.max_tokens,
       }));
+      setAutomationForm(automation);
+      setEmailForm({
+        enabled: email.enabled,
+        smtp_host: email.smtp_host || "",
+        smtp_port: email.smtp_port,
+        smtp_username: email.smtp_username || "",
+        smtp_password: "",
+        clear_password: false,
+        sender: email.sender || "",
+        recipients: email.recipients || "",
+        use_tls: email.use_tls,
+      });
     } catch (error) {
       setState((current) => ({
         ...current,
@@ -275,6 +313,32 @@ export default function App() {
         error: error instanceof Error ? error.message : "Unknown error",
       }));
     }
+  }
+
+  async function saveAutomationSettings() {
+    await runAction("Save automation", async () => {
+      const updated = await api.updateAutomationSettings(automationForm);
+      setState((current) => ({ ...current, automation: updated }));
+    });
+  }
+
+  async function saveEmailSettings() {
+    await runAction("Save email", async () => {
+      const updated = await api.updateEmailSettings({
+        enabled: emailForm.enabled,
+        smtp_host: emailForm.smtp_host || null,
+        smtp_port: emailForm.smtp_port,
+        smtp_username: emailForm.smtp_username || null,
+        smtp_password: emailForm.smtp_password || null,
+        clear_password: emailForm.clear_password,
+        sender: emailForm.sender || null,
+        recipients: emailForm.recipients || null,
+        use_tls: emailForm.use_tls,
+        has_password: false,
+      });
+      setState((current) => ({ ...current, email: updated }));
+      setEmailForm((current) => ({ ...current, smtp_password: "", clear_password: false }));
+    });
   }
 
   async function runAction(label: string, action: () => Promise<unknown>) {
@@ -870,6 +934,191 @@ export default function App() {
               <div className="settings-note">
                 <span>전체: CVE, Security News, Tanium Inventory, Detection 삭제</span>
                 <span>부분: CVE, Security News, Tanium Inventory만 삭제</span>
+              </div>
+            </article>
+            <article className="page-card settings-card">
+              <header>
+                <div>
+                  <h3>Automatic Updates</h3>
+                  <p>CVE와 Security News를 지정한 날짜와 시간에 자동 수집합니다. CVE 수집 후 EPSS도 자동 갱신됩니다.</p>
+                </div>
+                <span className={automationForm.enabled ? "pill ok" : "pill neutral"}>{automationForm.enabled ? "Enabled" : "Disabled"}</span>
+              </header>
+              <div className="settings-form">
+                <label className="check-field">
+                  <input
+                    type="checkbox"
+                    checked={automationForm.enabled}
+                    onChange={(event) => setAutomationForm((current) => ({ ...current, enabled: event.target.checked }))}
+                  />
+                  자동 업데이트 사용
+                </label>
+                <label className="check-field">
+                  <input
+                    type="checkbox"
+                    checked={automationForm.cve_enabled}
+                    onChange={(event) => setAutomationForm((current) => ({ ...current, cve_enabled: event.target.checked }))}
+                  />
+                  CVE 자동 업데이트
+                </label>
+                <label className="check-field">
+                  <input
+                    type="checkbox"
+                    checked={automationForm.news_enabled}
+                    onChange={(event) => setAutomationForm((current) => ({ ...current, news_enabled: event.target.checked }))}
+                  />
+                  Security News 자동 업데이트
+                </label>
+                <label>
+                  스케줄
+                  <select
+                    value={automationForm.frequency}
+                    onChange={(event) => setAutomationForm((current) => ({ ...current, frequency: event.target.value as AutomationSettings["frequency"] }))}
+                  >
+                    <option value="daily">매일</option>
+                    <option value="weekly">매주</option>
+                    <option value="monthly">매월</option>
+                  </select>
+                </label>
+                {automationForm.frequency === "weekly" && (
+                  <label>
+                    요일
+                    <select
+                      value={automationForm.day_of_week ?? 0}
+                      onChange={(event) => setAutomationForm((current) => ({ ...current, day_of_week: Number(event.target.value) }))}
+                    >
+                      <option value={0}>월요일</option>
+                      <option value={1}>화요일</option>
+                      <option value={2}>수요일</option>
+                      <option value={3}>목요일</option>
+                      <option value={4}>금요일</option>
+                      <option value={5}>토요일</option>
+                      <option value={6}>일요일</option>
+                    </select>
+                  </label>
+                )}
+                {automationForm.frequency === "monthly" && (
+                  <label>
+                    일자
+                    <input
+                      type="number"
+                      min={1}
+                      max={31}
+                      value={automationForm.day_of_month ?? 1}
+                      onChange={(event) => setAutomationForm((current) => ({ ...current, day_of_month: Number(event.target.value) }))}
+                    />
+                  </label>
+                )}
+                <label>
+                  실행 시간
+                  <input
+                    type="time"
+                    value={automationForm.run_time}
+                    onChange={(event) => setAutomationForm((current) => ({ ...current, run_time: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  Timezone
+                  <input
+                    value={automationForm.timezone}
+                    onChange={(event) => setAutomationForm((current) => ({ ...current, timezone: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  수집 기간(최근 N일)
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={automationForm.collection_days}
+                    onChange={(event) => setAutomationForm((current) => ({ ...current, collection_days: Number(event.target.value) }))}
+                  />
+                </label>
+                <div className="settings-actions">
+                  <button title="Save automatic update schedule" onClick={() => void saveAutomationSettings()} disabled={Boolean(state.action)}>
+                    <CalendarClock size={16} />
+                    <span>Save Schedule</span>
+                  </button>
+                </div>
+              </div>
+              <div className="settings-note">
+                <span>Last run: {formatDate(state.automation?.last_run_at)}</span>
+                <span>CVE Update 이후 EPSS recent 자동 실행</span>
+                <span>News 수집 기간: {automationForm.collection_days} days</span>
+              </div>
+            </article>
+            <article className="page-card settings-card">
+              <header>
+                <div>
+                  <h3>Email Delivery</h3>
+                  <p>전송할 정보는 추후 확정합니다. 현재는 SMTP 연결 설정과 수신자 정보만 저장합니다.</p>
+                </div>
+                <span className={emailForm.enabled ? "pill ok" : "pill neutral"}>{emailForm.enabled ? "Enabled" : "Disabled"}</span>
+              </header>
+              <div className="settings-form">
+                <label className="check-field">
+                  <input
+                    type="checkbox"
+                    checked={emailForm.enabled}
+                    onChange={(event) => setEmailForm((current) => ({ ...current, enabled: event.target.checked }))}
+                  />
+                  이메일 모듈 사용
+                </label>
+                <label>
+                  SMTP Host
+                  <input value={emailForm.smtp_host} onChange={(event) => setEmailForm((current) => ({ ...current, smtp_host: event.target.value }))} />
+                </label>
+                <label>
+                  SMTP Port
+                  <input type="number" min={1} max={65535} value={emailForm.smtp_port} onChange={(event) => setEmailForm((current) => ({ ...current, smtp_port: Number(event.target.value) }))} />
+                </label>
+                <label>
+                  Username
+                  <input value={emailForm.smtp_username} onChange={(event) => setEmailForm((current) => ({ ...current, smtp_username: event.target.value }))} />
+                </label>
+                <label>
+                  Password
+                  <input
+                    type="password"
+                    value={emailForm.smtp_password}
+                    placeholder={state.email?.has_password ? "저장된 비밀번호 유지" : "SMTP 비밀번호"}
+                    onChange={(event) => setEmailForm((current) => ({ ...current, smtp_password: event.target.value, clear_password: false }))}
+                  />
+                </label>
+                <label>
+                  Sender
+                  <input value={emailForm.sender} onChange={(event) => setEmailForm((current) => ({ ...current, sender: event.target.value }))} />
+                </label>
+                <label>
+                  Recipients
+                  <input value={emailForm.recipients} placeholder="security@example.com, admin@example.com" onChange={(event) => setEmailForm((current) => ({ ...current, recipients: event.target.value }))} />
+                </label>
+                <label className="check-field">
+                  <input
+                    type="checkbox"
+                    checked={emailForm.use_tls}
+                    onChange={(event) => setEmailForm((current) => ({ ...current, use_tls: event.target.checked }))}
+                  />
+                  TLS 사용
+                </label>
+                <label className="check-field">
+                  <input
+                    type="checkbox"
+                    checked={emailForm.clear_password}
+                    onChange={(event) => setEmailForm((current) => ({ ...current, clear_password: event.target.checked, smtp_password: event.target.checked ? "" : current.smtp_password }))}
+                  />
+                  저장된 SMTP 비밀번호 삭제
+                </label>
+                <div className="settings-actions">
+                  <button title="Save email delivery settings" onClick={() => void saveEmailSettings()} disabled={Boolean(state.action)}>
+                    <Mail size={16} />
+                    <span>Save Email</span>
+                  </button>
+                </div>
+              </div>
+              <div className="settings-note">
+                <span>Password: {state.email?.has_password ? "Stored" : "Not set"}</span>
+                <span>Recipients: {emailForm.recipients || "-"}</span>
               </div>
             </article>
             <article className="page-card settings-card">

@@ -214,3 +214,57 @@ class LlmTestResult(BaseModel):
     provider: str
     model: str | None = None
     message: str
+
+
+class AutomationSettingOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    enabled: bool = False
+    cve_enabled: bool = True
+    news_enabled: bool = True
+    frequency: Literal["daily", "weekly", "monthly"] = "daily"
+    day_of_week: int | None = None
+    day_of_month: int | None = None
+    run_time: str = "09:00"
+    timezone: str = "Asia/Seoul"
+    collection_days: int = 7
+    last_run_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class AutomationSettingUpdate(BaseModel):
+    enabled: bool = False
+    cve_enabled: bool = True
+    news_enabled: bool = True
+    frequency: Literal["daily", "weekly", "monthly"] = "daily"
+    day_of_week: int | None = Field(default=None, ge=0, le=6)
+    day_of_month: int | None = Field(default=None, ge=1, le=31)
+    run_time: str = Field(default="09:00", pattern=r"^\d{2}:\d{2}$")
+    timezone: str = "Asia/Seoul"
+    collection_days: int = Field(default=7, ge=1, le=365)
+
+
+class EmailSettingOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    enabled: bool = False
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    sender: str | None = None
+    recipients: str | None = None
+    use_tls: bool = True
+    has_password: bool = False
+    updated_at: datetime | None = None
+
+
+class EmailSettingUpdate(BaseModel):
+    enabled: bool = False
+    smtp_host: str | None = None
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    clear_password: bool = False
+    sender: str | None = None
+    recipients: str | None = None
+    use_tls: bool = True
