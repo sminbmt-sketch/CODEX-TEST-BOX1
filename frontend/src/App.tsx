@@ -295,10 +295,6 @@ export default function App() {
     await runAction("최신 CVE Update", () => api.collectNvdRecentFeed());
   }
 
-  async function runEpssUpdate() {
-    await runAction("EPSS Update", () => api.collectEpss({ mode: "stale", days: 1, retryDays: 1, batchSize: 100 }));
-  }
-
   async function runNvdYearUpdate() {
     const startYear = Math.min(nvdStartYear, nvdEndYear);
     const endYear = Math.max(nvdStartYear, nvdEndYear);
@@ -819,13 +815,9 @@ export default function App() {
                   <RefreshCw size={16} />
                   <span>Refresh</span>
                 </button>
-                <button title="Collect new CVEs from NVD CVE-Recent feed and skip duplicates" onClick={() => void runLatestCveUpdate()} disabled={Boolean(state.action)}>
+                <button title="Collect new CVEs from NVD CVE-Recent feed, then queue FIRST EPSS automatically" onClick={() => void runLatestCveUpdate()} disabled={Boolean(state.action)}>
                   <DatabaseZap size={16} />
                   <span>최신 CVE Update</span>
-                </button>
-                <button title="Update FIRST EPSS scores, percentiles, and checked timestamps" onClick={() => void runEpssUpdate()} disabled={Boolean(state.action) || state.epssJob?.status === "running" || state.epssJob?.status === "queued"}>
-                  <DatabaseZap size={16} />
-                  <span>EPSS Update</span>
                 </button>
                 <button title="Collect security news for the configured date range" onClick={() => void runNewsUpdate()} disabled={Boolean(state.action)}>
                   <FileText size={16} />
@@ -883,19 +875,14 @@ export default function App() {
             <article className="page-card settings-card">
               <header>
                 <div>
-                  <h3>EPSS Update</h3>
-                  <p>FIRST EPSS 점수, percentile, 확인 시각을 배치로 갱신합니다.</p>
+                  <h3>EPSS Status</h3>
+                  <p>최신 CVE Update 완료 후 FIRST EPSS 점수, percentile, 확인 시각을 자동으로 갱신합니다.</p>
                 </div>
                 <span className={state.epssJob?.status === "completed" ? "pill ok" : "pill neutral"}>{state.epssJob?.status || "idle"}</span>
               </header>
-              <div className="settings-actions">
-                <button title="Run efficient stale EPSS update" onClick={() => void runEpssUpdate()} disabled={Boolean(state.action) || state.epssJob?.status === "running" || state.epssJob?.status === "queued"}>
-                  <DatabaseZap size={16} />
-                  <span>EPSS Update</span>
-                </button>
-              </div>
               <div className="settings-note">
-                <span>Mode: {state.epssJob?.mode || "stale"}</span>
+                <span>Trigger: 최신 CVE Update 이후 자동 실행</span>
+                <span>Mode: {state.epssJob?.mode || "recent"}</span>
                 <span>Retry: {state.epssJob?.retry_days ?? 1} day</span>
                 <span>Batch: {state.epssJob?.current_batch ?? 0} / {state.epssJob?.total_batches ?? 0}</span>
                 <span>Fetched: {state.epssJob?.fetched ?? 0}</span>

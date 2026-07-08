@@ -118,6 +118,36 @@ def _run_epss_job_sync(mode: str, days: int, retry_days: int, limit: int | None,
     asyncio.run(_run_epss_job(mode, days, retry_days, limit, batch_size))
 
 
+def _queue_epss_job(
+    background_tasks: BackgroundTasks,
+    *,
+    mode: str,
+    days: int,
+    retry_days: int,
+    limit: int | None,
+    batch_size: int,
+) -> bool:
+    if EPSS_JOB.get("status") in {"queued", "running"}:
+        return False
+    EPSS_JOB.update(
+        {
+            "status": "queued",
+            "source": "FIRST EPSS",
+            "mode": mode,
+            "retry_days": retry_days,
+            "current_batch": None,
+            "total_batches": None,
+            "fetched": 0,
+            "created_or_updated": 0,
+            "error": None,
+            "started_at": datetime.now(),
+            "finished_at": None,
+        }
+    )
+    background_tasks.add_task(_run_epss_job_sync, mode, days, retry_days, limit, batch_size)
+    return True
+
+
 async def _run_nvd_year_job(start: int, end: int) -> None:
     NVD_YEAR_JOB.update(
         {
@@ -198,12 +228,14 @@ async def run_nvd_year_collection(
 
 
 @router.post("/nvd/recent-feed", response_model=CollectionResult)
-async def run_nvd_recent_feed_collection(db: Session = Depends(get_db)) -> CollectionResult:
+async def run_nvd_recent_feed_collection(background_tasks: BackgroundTasks, db: Session = Depends(get_db)) -> CollectionResult:
     try:
         fetched, changed = await collect_nvd_recent_feed(db)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"NVD recent feed collection failed: {exc}") from exc
-    return CollectionResult(source="NVD CVE Recent", fetched=fetched, created_or_updated=changed)
+    epss_queued = _queue_epss_job(background_tasks, mode="recent", days=30, retry_days=1, limit=None, batch_size=100)
+    source = "NVD CVE Recent + FIRST EPSS queued" if epss_queued else "NVD CVE Recent + FIRST EPSS already running"
+    return CollectionResult(source=source, fetched=fetched, created_or_updated=changed)
 
 
 @router.get("/nvd/year/status", response_model=CollectionJobStatus)
@@ -245,24 +277,9 @@ async def run_epss_update_job(
     limit: int | None = Query(default=None, ge=1, le=100000),
     batch_size: int = Query(default=100, ge=1, le=500),
 ) -> CollectionJobStatus:
-    if EPSS_JOB.get("status") == "running":
+    if EPSS_JOB.get("status") in {"queued", "running"}:
         raise HTTPException(status_code=409, detail="EPSS update job is already running")
-    EPSS_JOB.update(
-        {
-            "status": "queued",
-            "source": "FIRST EPSS",
-            "mode": mode,
-            "retry_days": retry_days,
-            "current_batch": None,
-            "total_batches": None,
-            "fetched": 0,
-            "created_or_updated": 0,
-            "error": None,
-            "started_at": datetime.now(),
-            "finished_at": None,
-        }
-    )
-    background_tasks.add_task(_run_epss_job_sync, mode, days, retry_days, limit, batch_size)
+    _queue_epss_job(background_tasks, mode=mode, days=days, retry_days=retry_days, limit=limit, batch_size=batch_size)
     return _epss_job_status()
 
 
