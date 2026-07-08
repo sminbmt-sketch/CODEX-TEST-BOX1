@@ -348,7 +348,6 @@ export default function App() {
     ];
   }, [state.summary, state.tanium]);
 
-  const nvdFeedSources = state.sources.filter((source) => source.name === "NVD JSON Feeds");
   const newsSources = state.sources.filter((source) => source.kind !== "vulnerability");
 
   return (
@@ -680,10 +679,6 @@ export default function App() {
                   <RefreshCw size={16} />
                   <span>Refresh</span>
                 </button>
-                <button title="Collect NVD yearly JSON feed for the selected range" onClick={() => void runNvdYearUpdate()} disabled={Boolean(state.action)}>
-                  <DatabaseZap size={16} />
-                  <span>NVD Year Feed</span>
-                </button>
                 <button title="Collect new CVEs from NVD CVE-Recent feed and skip duplicates" onClick={() => void runLatestCveUpdate()} disabled={Boolean(state.action)}>
                   <DatabaseZap size={16} />
                   <span>최신 CVE Update</span>
@@ -742,20 +737,6 @@ export default function App() {
               </div>
             </article>
             <div className="source-settings-grid">
-              <SourceSettingsCard
-                title="NVD Feed Sources"
-                description="NVD Year Feed와 최신 CVE Update에서 사용하는 NVD JSON 2.0 Feed 기준 링크입니다."
-                sources={nvdFeedSources}
-                drafts={sourceDrafts}
-                setDrafts={setSourceDrafts}
-                newDraft={newSourceDrafts.cve}
-                setNewDraft={(draft) => setNewSourceDrafts((current) => ({ ...current, cve: draft }))}
-                onCreate={() => createSource("cve")}
-                onSave={saveSource}
-                onDelete={deleteSource}
-                allowCreate={false}
-                actionDisabled={Boolean(state.action)}
-              />
               <SourceSettingsCard
                 title="News Sources"
                 description="Security News와 KISA 보안공지 수집에 사용하는 링크입니다."

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Body, Depends, HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.db.models import Article, AuditLog, Detection, EndpointSnapshot, LlmSetting, Source, Vulnerability
@@ -36,6 +36,9 @@ def ensure_default_sources(db: Session) -> None:
         *DEFAULT_HTML_SOURCES,
     ]
     for name, url, kind in defaults:
+        deleted = db.scalar(select(AuditLog.id).where(AuditLog.action == "source_deleted", AuditLog.target == name))
+        if deleted is not None:
+            continue
         source = db.scalar(select(Source).where(Source.name == name))
         if source is None:
             db.add(Source(name=name, url=url, kind=kind, license_note="Store metadata, source URL, and generated summaries only.", trust_score=0.7))
@@ -136,14 +139,16 @@ def update_source(source_id: int, payload: SourceUpdate, db: Session = Depends(g
 
 
 @router.delete("/sources/{source_id}", response_model=SourceOut)
-def disable_source(source_id: int, db: Session = Depends(get_db)) -> SourceOut:
+def delete_source(source_id: int, db: Session = Depends(get_db)) -> SourceOut:
     source = db.get(Source, source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
-    source.enabled = False
+    output = SourceOut.model_validate(source)
+    db.execute(update(Article).where(Article.source_id == source_id).values(source_id=None))
+    db.add(AuditLog(action="source_deleted", target=source.name, detail={"kind": source.kind, "url": source.url}))
+    db.delete(source)
     db.commit()
-    db.refresh(source)
-    return SourceOut.model_validate(source)
+    return output
 
 
 def _delete_count(db: Session, statement) -> int:
