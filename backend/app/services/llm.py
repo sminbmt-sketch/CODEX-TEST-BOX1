@@ -299,7 +299,11 @@ def _fallback_vulnerability_summary(vulnerability: Vulnerability) -> str:
 def _usable_summary(summary: str | None, required_terms: list[str] | None = None) -> str | None:
     if not summary:
         return None
-    cleaned = _canonicalize_summary(_extract_json_summary(summary) or summary)
+    extracted = _extract_json_summary(summary)
+    stripped = THINK_BLOCK_RE.sub("", summary).strip()
+    if extracted is None and stripped.startswith(("{", "[")):
+        return None
+    cleaned = _canonicalize_summary(extracted or summary)
     if not _has_korean_text(cleaned):
         return None
     lowered = cleaned.lower()
