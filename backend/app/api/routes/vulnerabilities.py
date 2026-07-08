@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import Vulnerability
@@ -43,31 +43,12 @@ def list_vulnerabilities(
     kev: bool | None = None,
     severity: str | None = None,
     sort: str = Query(default="date", pattern="^(date|name)$"),
-    risk_sort: str = Query(default="none", pattern="^(none|high|low)$"),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
 ) -> list[VulnerabilityOut]:
     query = apply_vulnerability_filters(select(Vulnerability), q=q, kev=kev, severity=severity)
-    severity_rank_high = case(
-        (Vulnerability.cvss_severity == "CRITICAL", 4),
-        (Vulnerability.cvss_severity == "HIGH", 3),
-        (Vulnerability.cvss_severity == "MEDIUM", 2),
-        (Vulnerability.cvss_severity == "LOW", 1),
-        else_=0,
-    )
-    severity_rank_low = case(
-        (Vulnerability.cvss_severity == "LOW", 1),
-        (Vulnerability.cvss_severity == "MEDIUM", 2),
-        (Vulnerability.cvss_severity == "HIGH", 3),
-        (Vulnerability.cvss_severity == "CRITICAL", 4),
-        else_=5,
-    )
-    if risk_sort == "high":
-        order_by = (severity_rank_high.desc(), Vulnerability.kev.desc(), Vulnerability.cvss_score.desc().nullslast(), Vulnerability.published_at.desc().nullslast())
-    elif risk_sort == "low":
-        order_by = (severity_rank_low.asc(), Vulnerability.kev.asc(), Vulnerability.cvss_score.asc().nullslast(), Vulnerability.published_at.desc().nullslast())
-    elif sort == "name":
+    if sort == "name":
         order_by = (Vulnerability.cve_id.asc(), Vulnerability.published_at.desc().nullslast())
     else:
         order_by = (Vulnerability.published_at.desc().nullslast(), Vulnerability.kev.desc(), Vulnerability.cvss_score.desc().nullslast())

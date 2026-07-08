@@ -169,7 +169,7 @@ type ListParams = {
   offset?: number;
   q?: string;
   sort?: "date" | "name";
-  risk_sort?: "none" | "high" | "low";
+  severity?: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
   category?: "news" | "kisa";
 };
 
@@ -189,7 +189,7 @@ function listQuery(params?: ListParams) {
   if (params?.offset != null) search.set("offset", String(params.offset));
   if (params?.q) search.set("q", params.q);
   if (params?.sort) search.set("sort", params.sort);
-  if (params?.risk_sort && params.risk_sort !== "none") search.set("risk_sort", params.risk_sort);
+  if (params?.severity) search.set("severity", params.severity);
   if (params?.category) search.set("category", params.category);
   const query = search.toString();
   return query ? `?${query}` : "";

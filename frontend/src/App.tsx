@@ -171,7 +171,7 @@ export default function App() {
   const [cvePageSize, setCvePageSize] = useState(30);
   const [cveSearch, setCveSearch] = useState("");
   const [cveSort, setCveSort] = useState<"date" | "name">("date");
-  const [cveRiskSort, setCveRiskSort] = useState<"none" | "high" | "low">("none");
+  const [cveSeverity, setCveSeverity] = useState<"" | "CRITICAL" | "HIGH" | "MEDIUM" | "LOW">("");
   const [newsPage, setNewsPage] = useState(1);
   const [newsPageSize, setNewsPageSize] = useState(30);
   const [newsSearch, setNewsSearch] = useState("");
@@ -205,7 +205,7 @@ export default function App() {
   async function load() {
     setState((current) => ({ ...current, loading: true, error: undefined }));
     try {
-      const cveParams = { limit: cvePageSize, offset: (cvePage - 1) * cvePageSize, q: cveSearch.trim() || undefined, sort: cveSort, risk_sort: cveRiskSort };
+      const cveParams = { limit: cvePageSize, offset: (cvePage - 1) * cvePageSize, q: cveSearch.trim() || undefined, sort: cveSort, severity: cveSeverity || undefined };
       const newsParams = { limit: newsPageSize, offset: (newsPage - 1) * newsPageSize, q: newsSearch.trim() || undefined, sort: newsSort, category: newsCategory };
       const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, sources, nvdYearJob] = await Promise.all([
         api.summary(),
@@ -370,11 +370,11 @@ export default function App() {
 
   useEffect(() => {
     void load();
-  }, [cvePage, cvePageSize, cveSearch, cveSort, cveRiskSort, newsPage, newsPageSize, newsSearch, newsSort, newsCategory]);
+  }, [cvePage, cvePageSize, cveSearch, cveSort, cveSeverity, newsPage, newsPageSize, newsSearch, newsSort, newsCategory]);
 
   useEffect(() => {
     setSelectedCveIds([]);
-  }, [cvePage, cvePageSize, cveSearch, cveSort, cveRiskSort]);
+  }, [cvePage, cvePageSize, cveSearch, cveSort, cveSeverity]);
 
   useEffect(() => {
     setSelectedArticleIds([]);
@@ -521,15 +521,17 @@ export default function App() {
                   <label className="sort-field">
                     위험도
                     <select
-                      value={cveRiskSort}
+                      value={cveSeverity}
                       onChange={(event) => {
-                        setCveRiskSort(event.target.value as "none" | "high" | "low");
+                        setCveSeverity(event.target.value as "" | "CRITICAL" | "HIGH" | "MEDIUM" | "LOW");
                         setCvePage(1);
                       }}
                     >
-                      <option value="none">기본</option>
-                      <option value="high">높은순</option>
-                      <option value="low">낮은순</option>
+                      <option value="">기본</option>
+                      <option value="CRITICAL">Critical</option>
+                      <option value="HIGH">High</option>
+                      <option value="MEDIUM">Medium</option>
+                      <option value="LOW">Low</option>
                     </select>
                   </label>
                 </div>
