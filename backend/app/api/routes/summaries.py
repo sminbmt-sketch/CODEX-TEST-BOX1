@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.schemas import SummaryRunResult, TrendReport
-from app.services.llm import build_trend_report, summarize_recent_articles, summarize_recent_vulnerabilities
+from app.schemas import SummaryRunResult, SummarySelectionRequest, TrendReport
+from app.services.llm import build_trend_report, summarize_articles_by_ids, summarize_recent_articles, summarize_recent_vulnerabilities, summarize_vulnerabilities_by_ids
 
 router = APIRouter(prefix="/summaries", tags=["summaries"])
 
@@ -33,6 +33,30 @@ async def summarize_vulnerabilities(
         fetched, summarized = await summarize_recent_vulnerabilities(db, limit=limit, days=days, include_existing=include_existing)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Vulnerability summarization failed: {exc}") from exc
+    return SummaryRunResult(target="vulnerabilities", fetched=fetched, summarized=summarized)
+
+
+@router.post("/articles/selected", response_model=SummaryRunResult)
+async def summarize_selected_articles(
+    payload: SummarySelectionRequest,
+    db: Session = Depends(get_db),
+) -> SummaryRunResult:
+    try:
+        fetched, summarized = await summarize_articles_by_ids(db, payload.ids)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Selected article summarization failed: {exc}") from exc
+    return SummaryRunResult(target="articles", fetched=fetched, summarized=summarized)
+
+
+@router.post("/vulnerabilities/selected", response_model=SummaryRunResult)
+async def summarize_selected_vulnerabilities(
+    payload: SummarySelectionRequest,
+    db: Session = Depends(get_db),
+) -> SummaryRunResult:
+    try:
+        fetched, summarized = await summarize_vulnerabilities_by_ids(db, payload.ids)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Selected vulnerability summarization failed: {exc}") from exc
     return SummaryRunResult(target="vulnerabilities", fetched=fetched, summarized=summarized)
 
 

@@ -140,6 +140,10 @@ class SummaryRunResult(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class SummarySelectionRequest(BaseModel):
+    ids: list[int] = Field(default_factory=list)
+
+
 class TrendNewsItem(BaseModel):
     title: str
     summary: str

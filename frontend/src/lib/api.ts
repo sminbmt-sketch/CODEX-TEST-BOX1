@@ -169,6 +169,7 @@ type ListParams = {
   offset?: number;
   q?: string;
   sort?: "date" | "name";
+  risk_sort?: "none" | "high" | "low";
   category?: "news" | "kisa";
 };
 
@@ -188,6 +189,7 @@ function listQuery(params?: ListParams) {
   if (params?.offset != null) search.set("offset", String(params.offset));
   if (params?.q) search.set("q", params.q);
   if (params?.sort) search.set("sort", params.sort);
+  if (params?.risk_sort && params.risk_sort !== "none") search.set("risk_sort", params.risk_sort);
   if (params?.category) search.set("category", params.category);
   const query = search.toString();
   return query ? `?${query}` : "";
@@ -250,6 +252,10 @@ export const api = {
   trends: () => request<TrendReport>("/api/summaries/trends?limit=8"),
   summarizeArticles: (params?: SummaryParams) => request<Record<string, unknown>>(`/api/summaries/articles${summaryQuery(params ?? { limit: 20 })}`, { method: "POST" }),
   summarizeVulnerabilities: (params?: SummaryParams) => request<Record<string, unknown>>(`/api/summaries/vulnerabilities${summaryQuery(params ?? { limit: 20 })}`, { method: "POST" }),
+  summarizeSelectedArticles: (ids: number[]) =>
+    request<Record<string, unknown>>("/api/summaries/articles/selected", { method: "POST", body: JSON.stringify({ ids }) }),
+  summarizeSelectedVulnerabilities: (ids: number[]) =>
+    request<Record<string, unknown>>("/api/summaries/vulnerabilities/selected", { method: "POST", body: JSON.stringify({ ids }) }),
   summarizeAll: (params?: SummaryParams) => request<Record<string, unknown>[]>(`/api/summaries/all${summaryQuery(params)}`, { method: "POST" }),
   collectNvd: () => request("/api/collect/nvd", { method: "POST" }),
   collectNvdRecentFeed: () => request("/api/collect/nvd/recent-feed", { method: "POST" }),

@@ -197,7 +197,8 @@ button:disabled {
   overflow: hidden;
 }
 
-.news-panel {
+.news-panel,
+.cve-panel {
   align-self: start;
   height: clamp(430px, calc(100vh - 310px), 620px);
 }
@@ -229,6 +230,14 @@ button:disabled {
 
 .table {
   display: grid;
+}
+
+.dashboard-cve-table {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-color: #3d5267 #101821;
+  scrollbar-width: thin;
 }
 
 .cve-row {
@@ -397,10 +406,15 @@ button:disabled {
 
 .list-toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) auto;
+  grid-template-columns: minmax(260px, 1fr) auto auto;
   align-items: center;
   gap: 10px;
   margin: -2px 0 14px;
+}
+
+.toolbar-side {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .segmented {
@@ -511,7 +525,53 @@ button:disabled {
 }
 
 .page-card {
+  position: relative;
   overflow: hidden;
+}
+
+.selectable-card {
+  padding-top: 34px;
+}
+
+.select-check {
+  position: absolute;
+  top: 10px;
+  left: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #9aa7b5;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.select-check input {
+  width: 16px;
+  height: 16px;
+}
+
+.selection-bar {
+  position: sticky;
+  bottom: 12px;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin: 16px 0 0;
+  border: 1px solid #365263;
+  border-radius: 8px;
+  background: rgba(16, 24, 33, 0.96);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  padding: 10px 12px;
+  color: #9aa7b5;
+  font-size: 12px;
+}
+
+.selection-bar strong {
+  margin-right: auto;
+  color: #edf5fa;
 }
 
 .page-card header {

@@ -171,11 +171,16 @@ export default function App() {
   const [cvePageSize, setCvePageSize] = useState(30);
   const [cveSearch, setCveSearch] = useState("");
   const [cveSort, setCveSort] = useState<"date" | "name">("date");
+  const [cveRiskSort, setCveRiskSort] = useState<"none" | "high" | "low">("none");
   const [newsPage, setNewsPage] = useState(1);
   const [newsPageSize, setNewsPageSize] = useState(30);
   const [newsSearch, setNewsSearch] = useState("");
   const [newsSort, setNewsSort] = useState<"date" | "name">("date");
   const [newsCategory, setNewsCategory] = useState<"news" | "kisa">("news");
+  const [cveSummaryMode, setCveSummaryMode] = useState(false);
+  const [newsSummaryMode, setNewsSummaryMode] = useState(false);
+  const [selectedCveIds, setSelectedCveIds] = useState<number[]>([]);
+  const [selectedArticleIds, setSelectedArticleIds] = useState<number[]>([]);
   const [sourceDrafts, setSourceDrafts] = useState<Record<number, { name: string; kind: string; url: string; enabled: boolean }>>({});
   const [newSourceDrafts, setNewSourceDrafts] = useState<Record<"cve" | "news", { name: string; kind: string; url: string; enabled: boolean }>>({
     cve: { name: "", kind: "vulnerability", url: "", enabled: true },
@@ -200,7 +205,7 @@ export default function App() {
   async function load() {
     setState((current) => ({ ...current, loading: true, error: undefined }));
     try {
-      const cveParams = { limit: cvePageSize, offset: (cvePage - 1) * cvePageSize, q: cveSearch.trim() || undefined, sort: cveSort };
+      const cveParams = { limit: cvePageSize, offset: (cvePage - 1) * cvePageSize, q: cveSearch.trim() || undefined, sort: cveSort, risk_sort: cveRiskSort };
       const newsParams = { limit: newsPageSize, offset: (newsPage - 1) * newsPageSize, q: newsSearch.trim() || undefined, sort: newsSort, category: newsCategory };
       const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, sources, nvdYearJob] = await Promise.all([
         api.summary(),
@@ -302,6 +307,35 @@ export default function App() {
     await runAction("Summaries", () => api.summarizeAll({ days: summaryDays, includeExisting: includeExistingSummaries }));
   }
 
+  async function runSelectedCveSummaries() {
+    await runAction(`Summarize ${selectedCveIds.length} CVEs`, async () => {
+      await api.summarizeSelectedVulnerabilities(selectedCveIds);
+      setSelectedCveIds([]);
+      setCveSummaryMode(false);
+    });
+  }
+
+  async function runSelectedArticleSummaries() {
+    await runAction(`Summarize ${selectedArticleIds.length} news`, async () => {
+      await api.summarizeSelectedArticles(selectedArticleIds);
+      setSelectedArticleIds([]);
+      setNewsSummaryMode(false);
+    });
+  }
+
+  function toggleSelected(setter: Dispatch<SetStateAction<number[]>>, id: number) {
+    setter((current) => (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]));
+  }
+
+  function selectVisible(setter: Dispatch<SetStateAction<number[]>>, ids: number[]) {
+    setter((current) => Array.from(new Set([...current, ...ids])));
+  }
+
+  function clearVisible(setter: Dispatch<SetStateAction<number[]>>, ids: number[]) {
+    const visible = new Set(ids);
+    setter((current) => current.filter((id) => !visible.has(id)));
+  }
+
   async function saveSource(source: Source) {
     const draft = sourceDrafts[source.id];
     if (!draft) return;
@@ -336,7 +370,15 @@ export default function App() {
 
   useEffect(() => {
     void load();
-  }, [cvePage, cvePageSize, cveSearch, cveSort, newsPage, newsPageSize, newsSearch, newsSort, newsCategory]);
+  }, [cvePage, cvePageSize, cveSearch, cveSort, cveRiskSort, newsPage, newsPageSize, newsSearch, newsSort, newsCategory]);
+
+  useEffect(() => {
+    setSelectedCveIds([]);
+  }, [cvePage, cvePageSize, cveSearch, cveSort, cveRiskSort]);
+
+  useEffect(() => {
+    setSelectedArticleIds([]);
+  }, [newsPage, newsPageSize, newsSearch, newsSort, newsCategory]);
 
   const metrics = useMemo(() => {
     const summary = state.summary;
@@ -354,6 +396,9 @@ export default function App() {
   }, [state.summary, state.tanium]);
 
   const newsSources = state.sources.filter((source) => source.kind !== "vulnerability");
+  const visibleCveIds = state.vulnerabilities.map((item) => item.id);
+  const visibleArticleIds = state.articles.map((item) => item.id);
+  const dashboardCves = (state.summary?.top_risks || []).slice(0, 10);
 
   return (
     <main className="ops-app">
@@ -396,21 +441,21 @@ export default function App() {
             </section>
 
             <section className="dashboard-grid">
-              <article className="panel">
+              <article className="panel cve-panel">
                 <div className="panel-header">
                   <h2>CVE / KEV</h2>
                   <a className="link-button" href="#/cves">
                     CVE / KEV 전체 보기
                   </a>
                 </div>
-                <div className="table">
+                <div className="table dashboard-cve-table">
                   <div className="cve-row header">
                     <span className="center-cell">CVE</span>
                     <span>KEV/Severity</span>
                     <span className="center-cell">EPSS</span>
                     <span>요약 내용</span>
                   </div>
-                  {(state.summary?.top_risks || []).slice(0, 4).map((item) => (
+                  {dashboardCves.map((item) => (
                     <div key={item.id} className="cve-row">
                       <strong className="center-cell cve-id-cell">{item.cve_id}</strong>
                       <span className={item.kev ? "chip critical" : severityClass(item.cvss_severity)} title={item.cvss_severity || undefined}>
@@ -420,7 +465,7 @@ export default function App() {
                       <span>{vulnerabilitySummary(item)}</span>
                     </div>
                   ))}
-                  {!state.summary?.top_risks.length && <div className="empty block">No vulnerability data</div>}
+                  {!dashboardCves.length && <div className="empty block">No vulnerability data</div>}
                 </div>
               </article>
 
@@ -453,7 +498,11 @@ export default function App() {
                 description="수집한 CVE, KEV, EPSS, 영향 단말 후보를 게시글 형태로 확인합니다."
                 badge={`${state.summary?.vulnerability_count ?? state.vulnerabilities.length} CVEs`}
                 tone="critical"
-              />
+              >
+                <button type="button" onClick={() => setCveSummaryMode((value) => !value)} disabled={Boolean(state.action)}>
+                  Summarize
+                </button>
+              </PageTitle>
               <ListToolbar>
                 <ListControls
                   search={cveSearch}
@@ -468,6 +517,22 @@ export default function App() {
                     setCvePage(1);
                   }}
                 />
+                <div className="toolbar-side">
+                  <label className="sort-field">
+                    위험도
+                    <select
+                      value={cveRiskSort}
+                      onChange={(event) => {
+                        setCveRiskSort(event.target.value as "none" | "high" | "low");
+                        setCvePage(1);
+                      }}
+                    >
+                      <option value="none">기본</option>
+                      <option value="high">높은순</option>
+                      <option value="low">낮은순</option>
+                    </select>
+                  </label>
+                </div>
                 <Pager
                   page={cvePage}
                   pageSize={cvePageSize}
@@ -482,7 +547,17 @@ export default function App() {
             </div>
             <div className="page-grid">
               {state.vulnerabilities.map((item) => (
-                <article key={item.id} className="page-card">
+                <article key={item.id} className="page-card selectable-card">
+                  {cveSummaryMode && (
+                    <label className="select-check">
+                      <input
+                        type="checkbox"
+                        checked={selectedCveIds.includes(item.id)}
+                        onChange={() => toggleSelected(setSelectedCveIds, item.id)}
+                      />
+                      선택
+                    </label>
+                  )}
                   <header>
                     <div>
                       <h3>
@@ -530,6 +605,16 @@ export default function App() {
               ))}
               {!state.vulnerabilities.length && <div className="empty block">No CVE data</div>}
             </div>
+            {cveSummaryMode && (
+              <SelectionBar
+                selectedCount={selectedCveIds.length}
+                visibleCount={visibleCveIds.length}
+                onSelectVisible={() => selectVisible(setSelectedCveIds, visibleCveIds)}
+                onClearVisible={() => clearVisible(setSelectedCveIds, visibleCveIds)}
+                onRun={() => void runSelectedCveSummaries()}
+                disabled={Boolean(state.action) || selectedCveIds.length === 0}
+              />
+            )}
           </section>
         )}
 
@@ -540,7 +625,11 @@ export default function App() {
                 title="Security News"
                 description="수집한 보안 뉴스와 KISA 보안 공지를 분리해서 확인합니다."
                 badge={`${state.articleTotal} ${newsCategory === "kisa" ? "KISA notices" : "news"}`}
-              />
+              >
+                <button type="button" onClick={() => setNewsSummaryMode((value) => !value)} disabled={Boolean(state.action)}>
+                  Summarize
+                </button>
+              </PageTitle>
               <div className="segmented">
                 <button
                   type="button"
@@ -593,7 +682,17 @@ export default function App() {
               {state.articles.map((article) => {
                 const display = articleDisplay(article);
                 return (
-                  <article key={article.id} className="page-card">
+                  <article key={article.id} className="page-card selectable-card">
+                    {newsSummaryMode && (
+                      <label className="select-check">
+                        <input
+                          type="checkbox"
+                          checked={selectedArticleIds.includes(article.id)}
+                          onChange={() => toggleSelected(setSelectedArticleIds, article.id)}
+                        />
+                        선택
+                      </label>
+                    )}
                     <header>
                       <div>
                         <h3>
@@ -631,6 +730,16 @@ export default function App() {
               })}
               {!state.articles.length && <div className="empty block">No news data</div>}
             </div>
+            {newsSummaryMode && (
+              <SelectionBar
+                selectedCount={selectedArticleIds.length}
+                visibleCount={visibleArticleIds.length}
+                onSelectVisible={() => selectVisible(setSelectedArticleIds, visibleArticleIds)}
+                onClearVisible={() => clearVisible(setSelectedArticleIds, visibleArticleIds)}
+                onRun={() => void runSelectedArticleSummaries()}
+                disabled={Boolean(state.action) || selectedArticleIds.length === 0}
+              />
+            )}
           </section>
         )}
 
@@ -1132,6 +1241,38 @@ function PageTitle({
 
 function ListToolbar({ children }: { children: ReactNode }) {
   return <div className="list-toolbar">{children}</div>;
+}
+
+function SelectionBar({
+  selectedCount,
+  visibleCount,
+  onSelectVisible,
+  onClearVisible,
+  onRun,
+  disabled,
+}: {
+  selectedCount: number;
+  visibleCount: number;
+  onSelectVisible: () => void;
+  onClearVisible: () => void;
+  onRun: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="selection-bar">
+      <strong>{selectedCount}개 선택됨</strong>
+      <span>현재 화면 {visibleCount}개 기준</span>
+      <button type="button" onClick={onSelectVisible} disabled={!visibleCount}>
+        전체 선택
+      </button>
+      <button type="button" onClick={onClearVisible} disabled={!visibleCount}>
+        전체 해제
+      </button>
+      <button type="button" onClick={onRun} disabled={disabled}>
+        선택 요약 실행
+      </button>
+    </div>
+  );
 }
 
 function ListControls({

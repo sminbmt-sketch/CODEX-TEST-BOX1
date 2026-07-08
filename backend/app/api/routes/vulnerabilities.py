@@ -43,12 +43,17 @@ def list_vulnerabilities(
     kev: bool | None = None,
     severity: str | None = None,
     sort: str = Query(default="date", pattern="^(date|name)$"),
+    risk_sort: str = Query(default="none", pattern="^(none|high|low)$"),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
 ) -> list[VulnerabilityOut]:
     query = apply_vulnerability_filters(select(Vulnerability), q=q, kev=kev, severity=severity)
-    if sort == "name":
+    if risk_sort == "high":
+        order_by = (Vulnerability.kev.desc(), Vulnerability.cvss_score.desc().nullslast(), Vulnerability.epss_score.desc().nullslast(), Vulnerability.published_at.desc().nullslast())
+    elif risk_sort == "low":
+        order_by = (Vulnerability.kev.asc(), Vulnerability.cvss_score.asc().nullsfirst(), Vulnerability.epss_score.asc().nullsfirst(), Vulnerability.published_at.desc().nullslast())
+    elif sort == "name":
         order_by = (Vulnerability.cve_id.asc(), Vulnerability.published_at.desc().nullslast())
     else:
         order_by = (Vulnerability.published_at.desc().nullslast(), Vulnerability.kev.desc(), Vulnerability.cvss_score.desc().nullslast())

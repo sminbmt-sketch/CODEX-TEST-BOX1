@@ -316,19 +316,7 @@ def _recent_cutoff(days: int = SUMMARY_RECENT_DAYS) -> datetime:
     return datetime.now(timezone.utc) - timedelta(days=days)
 
 
-async def summarize_recent_articles(db: Session, limit: int | None = 20, days: int = SUMMARY_RECENT_DAYS, include_existing: bool = False) -> tuple[int, int]:
-    cutoff = _recent_cutoff(days)
-    query = (
-        select(Article)
-        .options(selectinload(Article.source))
-        .where(or_(Article.published_at >= cutoff, Article.published_at.is_(None) & (Article.created_at >= cutoff)))
-        .order_by(Article.summary.is_not(None), Article.published_at.desc().nullslast(), Article.created_at.desc())
-    )
-    if not include_existing:
-        query = query.where(or_(Article.summary_status.is_(None), Article.summary_status != "llm"))
-    if limit is not None:
-        query = query.limit(limit)
-    rows = db.scalars(query).all()
+async def _summarize_article_rows(db: Session, rows: list[Article]) -> tuple[int, int]:
     changed = 0
     llm_config = resolve_llm_config(db)
     service = SummaryService(llm_config)
@@ -348,23 +336,7 @@ async def summarize_recent_articles(db: Session, limit: int | None = 20, days: i
     return len(rows), changed
 
 
-async def summarize_recent_vulnerabilities(db: Session, limit: int | None = 20, days: int = SUMMARY_RECENT_DAYS, include_existing: bool = False) -> tuple[int, int]:
-    cutoff = _recent_cutoff(days)
-    query = (
-        select(Vulnerability)
-        .where(Vulnerability.published_at >= cutoff)
-        .order_by(
-            Vulnerability.summary.is_not(None),
-            Vulnerability.kev.desc(),
-            Vulnerability.cvss_score.desc().nullslast(),
-            Vulnerability.epss_score.desc().nullslast(),
-        )
-    )
-    if not include_existing:
-        query = query.where(or_(Vulnerability.summary_status.is_(None), Vulnerability.summary_status != "llm"))
-    if limit is not None:
-        query = query.limit(limit)
-    rows = db.scalars(query).all()
+async def _summarize_vulnerability_rows(db: Session, rows: list[Vulnerability]) -> tuple[int, int]:
     changed = 0
     llm_config = resolve_llm_config(db)
     service = SummaryService(llm_config)
@@ -389,6 +361,56 @@ async def summarize_recent_vulnerabilities(db: Session, limit: int | None = 20, 
         changed += 1
     db.commit()
     return len(rows), changed
+
+
+async def summarize_recent_articles(db: Session, limit: int | None = 20, days: int = SUMMARY_RECENT_DAYS, include_existing: bool = False) -> tuple[int, int]:
+    cutoff = _recent_cutoff(days)
+    query = (
+        select(Article)
+        .options(selectinload(Article.source))
+        .where(or_(Article.published_at >= cutoff, Article.published_at.is_(None) & (Article.created_at >= cutoff)))
+        .order_by(Article.summary.is_not(None), Article.published_at.desc().nullslast(), Article.created_at.desc())
+    )
+    if not include_existing:
+        query = query.where(or_(Article.summary_status.is_(None), Article.summary_status != "llm"))
+    if limit is not None:
+        query = query.limit(limit)
+    rows = db.scalars(query).all()
+    return await _summarize_article_rows(db, rows)
+
+
+async def summarize_articles_by_ids(db: Session, ids: list[int]) -> tuple[int, int]:
+    if not ids:
+        return 0, 0
+    rows = db.scalars(select(Article).options(selectinload(Article.source)).where(Article.id.in_(ids))).all()
+    return await _summarize_article_rows(db, rows)
+
+
+async def summarize_recent_vulnerabilities(db: Session, limit: int | None = 20, days: int = SUMMARY_RECENT_DAYS, include_existing: bool = False) -> tuple[int, int]:
+    cutoff = _recent_cutoff(days)
+    query = (
+        select(Vulnerability)
+        .where(Vulnerability.published_at >= cutoff)
+        .order_by(
+            Vulnerability.summary.is_not(None),
+            Vulnerability.kev.desc(),
+            Vulnerability.cvss_score.desc().nullslast(),
+            Vulnerability.epss_score.desc().nullslast(),
+        )
+    )
+    if not include_existing:
+        query = query.where(or_(Vulnerability.summary_status.is_(None), Vulnerability.summary_status != "llm"))
+    if limit is not None:
+        query = query.limit(limit)
+    rows = db.scalars(query).all()
+    return await _summarize_vulnerability_rows(db, rows)
+
+
+async def summarize_vulnerabilities_by_ids(db: Session, ids: list[int]) -> tuple[int, int]:
+    if not ids:
+        return 0, 0
+    rows = db.scalars(select(Vulnerability).where(Vulnerability.id.in_(ids))).all()
+    return await _summarize_vulnerability_rows(db, rows)
 
 
 def build_trend_report(db: Session, limit: int = 10) -> dict:
