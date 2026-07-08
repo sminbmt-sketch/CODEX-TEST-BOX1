@@ -49,6 +49,9 @@ export type Vulnerability = {
   cvss_score?: number | null;
   cvss_severity?: string | null;
   epss_score?: number | null;
+  epss_percentile?: number | null;
+  epss_updated_at?: string | null;
+  epss_checked_at?: string | null;
   kev: boolean;
   vendor?: string | null;
   product?: string | null;
@@ -157,6 +160,10 @@ export type CollectionJobStatus = {
   start_year?: number | null;
   end_year?: number | null;
   current_year?: number | null;
+  mode?: string | null;
+  retry_days?: number | null;
+  current_batch?: number | null;
+  total_batches?: number | null;
   fetched: number;
   created_or_updated: number;
   error?: string | null;
@@ -183,6 +190,14 @@ type NewsCollectionParams = {
   days?: number;
 };
 
+type EpssCollectionParams = {
+  mode?: "missing" | "recent" | "stale" | "all";
+  days?: number;
+  retryDays?: number;
+  limit?: number;
+  batchSize?: number;
+};
+
 function listQuery(params?: ListParams) {
   const search = new URLSearchParams();
   if (params?.limit != null) search.set("limit", String(params.limit));
@@ -207,6 +222,17 @@ function summaryQuery(params?: SummaryParams) {
 function newsCollectionQuery(params?: NewsCollectionParams) {
   const search = new URLSearchParams();
   if (params?.days != null) search.set("days", String(params.days));
+  const query = search.toString();
+  return query ? `?${query}` : "";
+}
+
+function epssCollectionQuery(params?: EpssCollectionParams) {
+  const search = new URLSearchParams();
+  if (params?.mode) search.set("mode", params.mode);
+  if (params?.days != null) search.set("days", String(params.days));
+  if (params?.retryDays != null) search.set("retry_days", String(params.retryDays));
+  if (params?.limit != null) search.set("limit", String(params.limit));
+  if (params?.batchSize != null) search.set("batch_size", String(params.batchSize));
   const query = search.toString();
   return query ? `?${query}` : "";
 }
@@ -263,6 +289,8 @@ export const api = {
     request<CollectionJobStatus>(`/api/collect/nvd/year?start_year=${encodeURIComponent(String(startYear))}&end_year=${encodeURIComponent(String(endYear))}`, { method: "POST" }),
   nvdYearStatus: () => request<CollectionJobStatus>("/api/collect/nvd/year/status"),
   collectCisaKev: () => request("/api/collect/cisa-kev", { method: "POST" }),
-  collectEpss: () => request("/api/collect/epss", { method: "POST" }),
+  collectEpss: (params?: EpssCollectionParams) =>
+    request<CollectionJobStatus>(`/api/collect/epss/job${epssCollectionQuery(params ?? { mode: "missing" })}`, { method: "POST" }),
+  epssStatus: () => request<CollectionJobStatus>("/api/collect/epss/status"),
   collectNews: (params?: NewsCollectionParams) => request(`/api/collect/news${newsCollectionQuery(params)}`, { method: "POST" }),
 };

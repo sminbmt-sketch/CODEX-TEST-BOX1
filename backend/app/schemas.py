@@ -61,6 +61,9 @@ class VulnerabilityOut(BaseModel):
     cvss_score: float | None = None
     cvss_severity: str | None = None
     epss_score: float | None = None
+    epss_percentile: float | None = None
+    epss_updated_at: datetime | None = None
+    epss_checked_at: datetime | None = None
     kev: bool = False
     vendor: str | None = None
     product: str | None = None
@@ -119,6 +122,10 @@ class CollectionJobStatus(BaseModel):
     start_year: int | None = None
     end_year: int | None = None
     current_year: int | None = None
+    mode: str | None = None
+    retry_days: int | None = None
+    current_batch: int | None = None
+    total_batches: int | None = None
     fetched: int = 0
     created_or_updated: int = 0
     error: str | None = None
