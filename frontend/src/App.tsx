@@ -547,7 +547,7 @@ export default function App() {
             </div>
             <div className="page-grid">
               {state.vulnerabilities.map((item) => (
-                <article key={item.id} className="page-card selectable-card">
+                <article key={item.id} className={cveSummaryMode ? "page-card selectable-card" : "page-card"}>
                   {cveSummaryMode && (
                     <label className="select-check">
                       <input
@@ -682,7 +682,7 @@ export default function App() {
               {state.articles.map((article) => {
                 const display = articleDisplay(article);
                 return (
-                  <article key={article.id} className="page-card selectable-card">
+                  <article key={article.id} className={newsSummaryMode ? "page-card selectable-card" : "page-card"}>
                     {newsSummaryMode && (
                       <label className="select-check">
                         <input
