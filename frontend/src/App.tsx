@@ -348,7 +348,7 @@ export default function App() {
     ];
   }, [state.summary, state.tanium]);
 
-  const cveSources = state.sources.filter((source) => source.kind === "vulnerability");
+  const nvdFeedSources = state.sources.filter((source) => source.name === "NVD JSON Feeds");
   const newsSources = state.sources.filter((source) => source.kind !== "vulnerability");
 
   return (
@@ -743,9 +743,9 @@ export default function App() {
             </article>
             <div className="source-settings-grid">
               <SourceSettingsCard
-                title="CVE Update Sources"
-                description="NVD Year Feed, 최신 CVE Update, CISA KEV, EPSS에서 사용하는 링크입니다."
-                sources={cveSources}
+                title="NVD Feed Sources"
+                description="NVD Year Feed와 최신 CVE Update에서 사용하는 NVD JSON 2.0 Feed 기준 링크입니다."
+                sources={nvdFeedSources}
                 drafts={sourceDrafts}
                 setDrafts={setSourceDrafts}
                 newDraft={newSourceDrafts.cve}
@@ -753,6 +753,7 @@ export default function App() {
                 onCreate={() => createSource("cve")}
                 onSave={saveSource}
                 onDelete={deleteSource}
+                allowCreate={false}
                 actionDisabled={Boolean(state.action)}
               />
               <SourceSettingsCard
@@ -766,6 +767,7 @@ export default function App() {
                 onCreate={() => createSource("news")}
                 onSave={saveSource}
                 onDelete={deleteSource}
+                allowCreate
                 actionDisabled={Boolean(state.action)}
               />
             </div>
@@ -990,6 +992,7 @@ function SourceSettingsCard({
   onCreate,
   onSave,
   onDelete,
+  allowCreate = true,
   actionDisabled,
 }: {
   title: string;
@@ -1002,6 +1005,7 @@ function SourceSettingsCard({
   onCreate: () => Promise<void>;
   onSave: (source: Source) => Promise<void>;
   onDelete: (source: Source) => Promise<void>;
+  allowCreate?: boolean;
   actionDisabled: boolean;
 }) {
   const addDisabled = actionDisabled || !newDraft.name.trim() || !newDraft.kind.trim() || !newDraft.url.trim();
@@ -1016,34 +1020,36 @@ function SourceSettingsCard({
         <span className="pill neutral">{sources.filter((source) => source.enabled).length} active</span>
       </header>
       <div className="source-list">
-        <div className="source-row source-add-row">
-          <label>
-            Name
-            <input value={newDraft.name} onChange={(event) => setNewDraft({ ...newDraft, name: event.target.value })} placeholder="Source name" />
-          </label>
-          <label>
-            Kind
-            <input value={newDraft.kind} onChange={(event) => setNewDraft({ ...newDraft, kind: event.target.value })} placeholder="rss" />
-          </label>
-          <label className="source-url-field">
-            URL
-            <input value={newDraft.url} onChange={(event) => setNewDraft({ ...newDraft, url: event.target.value })} placeholder="https://..." />
-          </label>
-          <label className="check-field source-enabled">
-            <input
-              type="checkbox"
-              checked={newDraft.enabled}
-              onChange={(event) => setNewDraft({ ...newDraft, enabled: event.target.checked })}
-            />
-            Enabled
-          </label>
-          <div className="source-actions">
-            <button type="button" className="source-add-button" onClick={() => void onCreate()} disabled={addDisabled}>
-              <Plus size={14} />
-              링크 추가
-            </button>
+        {allowCreate && (
+          <div className="source-row source-add-row">
+            <label>
+              Name
+              <input value={newDraft.name} onChange={(event) => setNewDraft({ ...newDraft, name: event.target.value })} placeholder="Source name" />
+            </label>
+            <label>
+              Kind
+              <input value={newDraft.kind} onChange={(event) => setNewDraft({ ...newDraft, kind: event.target.value })} placeholder="rss" />
+            </label>
+            <label className="source-url-field">
+              URL
+              <input value={newDraft.url} onChange={(event) => setNewDraft({ ...newDraft, url: event.target.value })} placeholder="https://..." />
+            </label>
+            <label className="check-field source-enabled">
+              <input
+                type="checkbox"
+                checked={newDraft.enabled}
+                onChange={(event) => setNewDraft({ ...newDraft, enabled: event.target.checked })}
+              />
+              Enabled
+            </label>
+            <div className="source-actions">
+              <button type="button" className="source-add-button" onClick={() => void onCreate()} disabled={addDisabled}>
+                <Plus size={14} />
+                링크 추가
+              </button>
+            </div>
           </div>
-        </div>
+        )}
         {sources.map((source) => {
           const draft = drafts[source.id] || { name: source.name, kind: source.kind, url: source.url || "", enabled: source.enabled };
           return (
