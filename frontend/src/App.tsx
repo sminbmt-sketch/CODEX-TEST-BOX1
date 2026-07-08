@@ -432,7 +432,7 @@ export default function App() {
                   </a>
                 </div>
                 <div className="brief">
-                  {(state.summary?.latest_articles || []).slice(0, 3).map((item) => (
+                  {(state.summary?.latest_articles || []).slice(0, 10).map((item) => (
                     <article key={item.url}>
                       <strong>{item.title}</strong>
                       <p>{articleDisplay(item).summary}</p>

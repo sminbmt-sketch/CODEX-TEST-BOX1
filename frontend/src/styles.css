@@ -191,6 +191,7 @@ button:disabled {
 }
 
 .panel {
+  min-height: 430px;
   overflow: hidden;
 }
 
@@ -308,12 +309,18 @@ button:disabled {
 
 .brief {
   display: grid;
+  align-content: start;
   gap: 12px;
+  max-height: 374px;
+  overflow-y: auto;
   padding: 14px;
+  scrollbar-color: #3d5267 #101821;
+  scrollbar-width: thin;
 }
 
 .brief article {
   border-left: 3px solid #0f6b79;
+  min-height: 82px;
   padding-left: 10px;
 }
 
@@ -337,6 +344,13 @@ button:disabled {
 .post p,
 .cve-row span:last-child {
   white-space: pre-line;
+}
+
+.brief p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .section-title {
