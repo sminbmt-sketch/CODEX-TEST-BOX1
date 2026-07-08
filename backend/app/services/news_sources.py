@@ -39,22 +39,54 @@ class LinkListParser(HTMLParser):
         self.links: list[tuple[str, str]] = []
         self._current_href: str | None = None
         self._current_text: list[str] = []
+        self._in_row = False
+        self._row_links: list[tuple[str, str]] = []
+        self._in_num_cell = False
+        self._row_num_text: list[str] = []
+
+    @staticmethod
+    def _classes(attrs: dict[str, str | None]) -> set[str]:
+        return set((attrs.get("class") or "").lower().split())
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag.lower() != "a":
-            return
+        tag_name = tag.lower()
         attrs_dict = {key.lower(): value for key, value in attrs}
+        if tag_name == "tr":
+            self._in_row = True
+            self._row_links = []
+            self._row_num_text = []
+            return
+        if tag_name == "td" and self._in_row and "num" in self._classes(attrs_dict):
+            self._in_num_cell = True
+            return
+        if tag_name != "a":
+            return
         href = attrs_dict.get("href")
         if href:
             self._current_href = href
             self._current_text = []
 
     def handle_data(self, data: str) -> None:
+        if self._in_num_cell:
+            self._row_num_text.append(data)
         if self._current_href:
             self._current_text.append(data)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag.lower() != "a" or not self._current_href:
+        tag_name = tag.lower()
+        if tag_name == "td" and self._in_num_cell:
+            self._in_num_cell = False
+            return
+        if tag_name == "tr" and self._in_row:
+            row_num = " ".join(" ".join(self._row_num_text).split())
+            if row_num != "공지":
+                self.links.extend(self._row_links)
+            self._in_row = False
+            self._row_links = []
+            self._row_num_text = []
+            self._in_num_cell = False
+            return
+        if tag_name != "a" or not self._current_href:
             return
         title = " ".join(" ".join(self._current_text).split())
         href = self._current_href
@@ -64,7 +96,11 @@ class LinkListParser(HTMLParser):
             return
         if href.startswith(("javascript:", "#", "mailto:")):
             return
-        self.links.append((unescape(title), urljoin(self.base_url, href)))
+        link = (unescape(title), urljoin(self.base_url, href))
+        if self._in_row:
+            self._row_links.append(link)
+        else:
+            self.links.append(link)
 
 
 def _ensure_source(db: Session, name: str, kind: str, url: str) -> Source:
