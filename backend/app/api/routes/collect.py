@@ -142,9 +142,12 @@ async def run_epss_update(
 
 
 @router.post("/news", response_model=CollectionResult)
-async def run_news_collection(db: Session = Depends(get_db)) -> CollectionResult:
+async def run_news_collection(
+    days: int = Query(default=7, ge=1, le=365),
+    db: Session = Depends(get_db),
+) -> CollectionResult:
     try:
-        fetched, changed = await collect_rss_feeds(db)
+        fetched, changed = await collect_rss_feeds(db, days=days)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"News collection failed: {exc}") from exc
     return CollectionResult(source="RSS feeds", fetched=fetched, created_or_updated=changed)

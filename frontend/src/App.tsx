@@ -182,6 +182,7 @@ export default function App() {
     news: { name: "", kind: "rss", url: "", enabled: true },
   });
   const [summaryDays, setSummaryDays] = useState(7);
+  const [newsDays, setNewsDays] = useState(7);
   const [includeExistingSummaries, setIncludeExistingSummaries] = useState(false);
   const [nvdStartYear, setNvdStartYear] = useState(currentYear);
   const [nvdEndYear, setNvdEndYear] = useState(currentYear);
@@ -291,6 +292,10 @@ export default function App() {
     const startYear = Math.min(nvdStartYear, nvdEndYear);
     const endYear = Math.max(nvdStartYear, nvdEndYear);
     await runAction(`NVD ${startYear}-${endYear}`, () => api.collectNvdYear(startYear, endYear));
+  }
+
+  async function runNewsUpdate() {
+    await runAction("News", () => api.collectNews({ days: newsDays }));
   }
 
   async function runSummariesUpdate() {
@@ -683,7 +688,7 @@ export default function App() {
                   <DatabaseZap size={16} />
                   <span>최신 CVE Update</span>
                 </button>
-                <button title="Collect security news" onClick={() => void runAction("News", api.collectNews)} disabled={Boolean(state.action)}>
+                <button title="Collect security news for the configured date range" onClick={() => void runNewsUpdate()} disabled={Boolean(state.action)}>
                   <FileText size={16} />
                   <span>News</span>
                 </button>
@@ -750,7 +755,21 @@ export default function App() {
                 onDelete={deleteSource}
                 allowCreate
                 actionDisabled={Boolean(state.action)}
-              />
+              >
+                <div className="settings-form news-days-form">
+                  <label>
+                    수집 기간(최근 N일)
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={newsDays}
+                      onChange={(event) => setNewsDays(Number(event.target.value))}
+                    />
+                  </label>
+                  <span className="settings-note-inline">기본값은 최근 7일입니다. KISA 게시판은 이 기간까지만 pageIndex를 넘기며 수집합니다.</span>
+                </div>
+              </SourceSettingsCard>
             </div>
             <article className="page-card settings-card">
               <header>
@@ -975,6 +994,7 @@ function SourceSettingsCard({
   onDelete,
   allowCreate = true,
   actionDisabled,
+  children,
 }: {
   title: string;
   description: string;
@@ -988,6 +1008,7 @@ function SourceSettingsCard({
   onDelete: (source: Source) => Promise<void>;
   allowCreate?: boolean;
   actionDisabled: boolean;
+  children?: ReactNode;
 }) {
   const addDisabled = actionDisabled || !newDraft.name.trim() || !newDraft.kind.trim() || !newDraft.url.trim();
 
@@ -1000,6 +1021,7 @@ function SourceSettingsCard({
         </div>
         <span className="pill neutral">{sources.filter((source) => source.enabled).length} active</span>
       </header>
+      {children}
       <div className="source-list">
         {allowCreate && (
           <div className="source-row source-add-row">

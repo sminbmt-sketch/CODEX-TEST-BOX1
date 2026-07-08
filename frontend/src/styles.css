@@ -715,6 +715,18 @@ button:disabled {
   align-items: end;
 }
 
+.news-days-form {
+  grid-template-columns: minmax(160px, 220px) minmax(260px, 1fr);
+  align-items: end;
+  border-top: 1px solid #263240;
+}
+
+.settings-note-inline {
+  color: #9aa7b5;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .settings-sticky-header {
   margin-bottom: 14px;
 }

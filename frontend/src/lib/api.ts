@@ -178,6 +178,10 @@ type SummaryParams = {
   limit?: number;
 };
 
+type NewsCollectionParams = {
+  days?: number;
+};
+
 function listQuery(params?: ListParams) {
   const search = new URLSearchParams();
   if (params?.limit != null) search.set("limit", String(params.limit));
@@ -194,6 +198,13 @@ function summaryQuery(params?: SummaryParams) {
   if (params?.days != null) search.set("days", String(params.days));
   if (params?.includeExisting != null) search.set("include_existing", String(params.includeExisting));
   if (params?.limit != null) search.set("limit", String(params.limit));
+  const query = search.toString();
+  return query ? `?${query}` : "";
+}
+
+function newsCollectionQuery(params?: NewsCollectionParams) {
+  const search = new URLSearchParams();
+  if (params?.days != null) search.set("days", String(params.days));
   const query = search.toString();
   return query ? `?${query}` : "";
 }
@@ -247,5 +258,5 @@ export const api = {
   nvdYearStatus: () => request<CollectionJobStatus>("/api/collect/nvd/year/status"),
   collectCisaKev: () => request("/api/collect/cisa-kev", { method: "POST" }),
   collectEpss: () => request("/api/collect/epss", { method: "POST" }),
-  collectNews: () => request("/api/collect/news", { method: "POST" }),
+  collectNews: (params?: NewsCollectionParams) => request(`/api/collect/news${newsCollectionQuery(params)}`, { method: "POST" }),
 };
