@@ -32,6 +32,7 @@ HTML_DECLARATION_RE = re.compile(r"<\?[^>]*\?>|<!doctype[^>]*>", re.IGNORECASE)
 XML_DECLARATION_RE = re.compile(r"<\?xml[^>]*\?>", re.IGNORECASE)
 BOARD_LIST_RE = re.compile(r"<!--\s*board list start\s*-->(.*?)<!--\s*board list end\s*//\s*-->", re.IGNORECASE | re.DOTALL)
 KRCERT_LIST_PATH = "/kr/bbs/list.do"
+KRCERT_SECURITY_NOTICE_PARAMS = {"menuNo": "205020", "bbsId": "B0000133"}
 
 
 class LinkListParser(HTMLParser):
@@ -252,6 +253,9 @@ def _is_krcert_board_url(url: str) -> bool:
 def _with_page_index(url: str, page_index: int) -> str:
     parsed = urlsplit(url)
     query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    if parsed.netloc.endswith("krcert.or.kr") and parsed.path == KRCERT_LIST_PATH:
+        for key, value in KRCERT_SECURITY_NOTICE_PARAMS.items():
+            query.setdefault(key, value)
     query["pageIndex"] = str(page_index)
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
 
