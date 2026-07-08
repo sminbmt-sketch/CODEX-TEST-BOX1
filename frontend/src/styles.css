@@ -191,8 +191,15 @@ button:disabled {
 }
 
 .panel {
+  display: flex;
+  flex-direction: column;
   min-height: 430px;
   overflow: hidden;
+}
+
+.news-panel {
+  align-self: start;
+  height: clamp(430px, calc(100vh - 310px), 620px);
 }
 
 .panel-header {
@@ -310,8 +317,9 @@ button:disabled {
 .brief {
   display: grid;
   align-content: start;
+  flex: 1;
   gap: 12px;
-  max-height: 374px;
+  min-height: 0;
   overflow-y: auto;
   padding: 14px;
   scrollbar-color: #3d5267 #101821;

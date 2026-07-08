@@ -424,7 +424,7 @@ export default function App() {
                 </div>
               </article>
 
-              <article className="panel">
+              <article className="panel news-panel">
                 <div className="panel-header">
                   <h2>Security News</h2>
                   <a className="link-button" href="#/security-news">
