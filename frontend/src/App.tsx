@@ -16,6 +16,7 @@ type LoadState = {
   tanium?: TaniumStatus;
   llm?: LlmSettings;
   nvdYearJob?: CollectionJobStatus;
+  epssJob?: CollectionJobStatus;
   sources: Source[];
   loading: boolean;
   error?: string;
@@ -207,7 +208,7 @@ export default function App() {
     try {
       const cveParams = { limit: cvePageSize, offset: (cvePage - 1) * cvePageSize, q: cveSearch.trim() || undefined, sort: cveSort, severity: cveSeverity || undefined };
       const newsParams = { limit: newsPageSize, offset: (newsPage - 1) * newsPageSize, q: newsSearch.trim() || undefined, sort: newsSort, category: newsCategory };
-      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, sources, nvdYearJob] = await Promise.all([
+      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, sources, nvdYearJob, epssJob] = await Promise.all([
         api.summary(),
         api.vulnerabilities(cveParams),
         api.vulnerabilityCount(cveParams),
@@ -220,8 +221,9 @@ export default function App() {
         api.llmSettings(),
         api.sources(),
         api.nvdYearStatus(),
+        api.epssStatus(),
       ]);
-      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, nvdYearJob, sources, loading: false });
+      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, nvdYearJob, epssJob, sources, loading: false });
       setSourceDrafts(Object.fromEntries(sources.map((source) => [source.id, { name: source.name, kind: source.kind, url: source.url || "", enabled: source.enabled }])));
       setLlmForm((current) => ({
         ...current,
@@ -291,6 +293,10 @@ export default function App() {
 
   async function runLatestCveUpdate() {
     await runAction("최신 CVE Update", () => api.collectNvdRecentFeed());
+  }
+
+  async function runEpssUpdate() {
+    await runAction("EPSS Update", () => api.collectEpss({ mode: "stale", days: 1, retryDays: 1, batchSize: 100 }));
   }
 
   async function runNvdYearUpdate() {
@@ -379,6 +385,24 @@ export default function App() {
   useEffect(() => {
     setSelectedArticleIds([]);
   }, [newsPage, newsPageSize, newsSearch, newsSort, newsCategory]);
+
+  useEffect(() => {
+    const shouldPoll =
+      state.nvdYearJob?.status === "queued" ||
+      state.nvdYearJob?.status === "running" ||
+      state.epssJob?.status === "queued" ||
+      state.epssJob?.status === "running";
+    if (!shouldPoll) return undefined;
+    const timer = window.setInterval(async () => {
+      try {
+        const [nvdYearJob, epssJob] = await Promise.all([api.nvdYearStatus(), api.epssStatus()]);
+        setState((current) => ({ ...current, nvdYearJob, epssJob }));
+      } catch {
+        window.clearInterval(timer);
+      }
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [state.nvdYearJob?.status, state.epssJob?.status]);
 
   const metrics = useMemo(() => {
     const summary = state.summary;
@@ -799,6 +823,10 @@ export default function App() {
                   <DatabaseZap size={16} />
                   <span>최신 CVE Update</span>
                 </button>
+                <button title="Update FIRST EPSS scores, percentiles, and checked timestamps" onClick={() => void runEpssUpdate()} disabled={Boolean(state.action) || state.epssJob?.status === "running" || state.epssJob?.status === "queued"}>
+                  <DatabaseZap size={16} />
+                  <span>EPSS Update</span>
+                </button>
                 <button title="Collect security news for the configured date range" onClick={() => void runNewsUpdate()} disabled={Boolean(state.action)}>
                   <FileText size={16} />
                   <span>News</span>
@@ -850,6 +878,30 @@ export default function App() {
               <div className="settings-note">
                 <span>전체: CVE, Security News, Tanium Inventory, Detection 삭제</span>
                 <span>부분: CVE, Security News, Tanium Inventory만 삭제</span>
+              </div>
+            </article>
+            <article className="page-card settings-card">
+              <header>
+                <div>
+                  <h3>EPSS Update</h3>
+                  <p>FIRST EPSS 점수, percentile, 확인 시각을 배치로 갱신합니다.</p>
+                </div>
+                <span className={state.epssJob?.status === "completed" ? "pill ok" : "pill neutral"}>{state.epssJob?.status || "idle"}</span>
+              </header>
+              <div className="settings-actions">
+                <button title="Run efficient stale EPSS update" onClick={() => void runEpssUpdate()} disabled={Boolean(state.action) || state.epssJob?.status === "running" || state.epssJob?.status === "queued"}>
+                  <DatabaseZap size={16} />
+                  <span>EPSS Update</span>
+                </button>
+              </div>
+              <div className="settings-note">
+                <span>Mode: {state.epssJob?.mode || "stale"}</span>
+                <span>Retry: {state.epssJob?.retry_days ?? 1} day</span>
+                <span>Batch: {state.epssJob?.current_batch ?? 0} / {state.epssJob?.total_batches ?? 0}</span>
+                <span>Fetched: {state.epssJob?.fetched ?? 0}</span>
+                <span>Updated: {state.epssJob?.created_or_updated ?? 0}</span>
+                {state.epssJob?.finished_at && <span>Finished: {formatDate(state.epssJob.finished_at)}</span>}
+                {state.epssJob?.error && <strong>{state.epssJob.error}</strong>}
               </div>
             </article>
             <div className="source-settings-grid">
