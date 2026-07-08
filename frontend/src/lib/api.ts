@@ -241,6 +241,7 @@ export const api = {
   summarizeVulnerabilities: (params?: SummaryParams) => request<Record<string, unknown>>(`/api/summaries/vulnerabilities${summaryQuery(params ?? { limit: 20 })}`, { method: "POST" }),
   summarizeAll: (params?: SummaryParams) => request<Record<string, unknown>[]>(`/api/summaries/all${summaryQuery(params)}`, { method: "POST" }),
   collectNvd: () => request("/api/collect/nvd", { method: "POST" }),
+  collectNvdRecentFeed: () => request("/api/collect/nvd/recent-feed", { method: "POST" }),
   collectNvdYear: (startYear: number, endYear: number) =>
     request<CollectionJobStatus>(`/api/collect/nvd/year?start_year=${encodeURIComponent(String(startYear))}&end_year=${encodeURIComponent(String(endYear))}`, { method: "POST" }),
   nvdYearStatus: () => request<CollectionJobStatus>("/api/collect/nvd/year/status"),

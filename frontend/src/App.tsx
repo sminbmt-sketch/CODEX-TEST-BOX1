@@ -283,12 +283,8 @@ export default function App() {
     }
   }
 
-  async function runCveUpdate() {
-    await runAction("CVE Update", async () => {
-      await api.collectNvd();
-      await api.collectCisaKev();
-      await api.collectEpss();
-    });
+  async function runLatestCveUpdate() {
+    await runAction("최신 CVE Update", () => api.collectNvdRecentFeed());
   }
 
   async function runNvdYearUpdate() {
@@ -684,9 +680,13 @@ export default function App() {
                   <RefreshCw size={16} />
                   <span>Refresh</span>
                 </button>
-                <button title="Collect NVD, CISA KEV, and EPSS data" onClick={() => void runCveUpdate()} disabled={Boolean(state.action)}>
+                <button title="Collect NVD yearly JSON feed for the selected range" onClick={() => void runNvdYearUpdate()} disabled={Boolean(state.action)}>
                   <DatabaseZap size={16} />
-                  <span>CVE Update</span>
+                  <span>NVD Year Feed</span>
+                </button>
+                <button title="Collect new CVEs from NVD CVE-Recent feed and skip duplicates" onClick={() => void runLatestCveUpdate()} disabled={Boolean(state.action)}>
+                  <DatabaseZap size={16} />
+                  <span>최신 CVE Update</span>
                 </button>
                 <button title="Collect security news" onClick={() => void runAction("News", api.collectNews)} disabled={Boolean(state.action)}>
                   <FileText size={16} />
@@ -744,7 +744,7 @@ export default function App() {
             <div className="source-settings-grid">
               <SourceSettingsCard
                 title="CVE Update Sources"
-                description="CVE Update에서 사용하는 NVD, CISA KEV, EPSS 링크입니다."
+                description="NVD Year Feed, 최신 CVE Update, CISA KEV, EPSS에서 사용하는 링크입니다."
                 sources={cveSources}
                 drafts={sourceDrafts}
                 setDrafts={setSourceDrafts}

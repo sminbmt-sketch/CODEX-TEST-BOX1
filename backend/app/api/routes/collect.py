@@ -9,7 +9,7 @@ from app.db.models import Vulnerability
 from app.db.session import SessionLocal, get_db
 from app.schemas import CollectionJobStatus, CollectionResult
 from app.services.news_sources import collect_rss_feeds
-from app.services.vulnerability_sources import collect_cisa_kev, collect_nvd_year_feed, collect_recent_nvd, update_epss_scores
+from app.services.vulnerability_sources import collect_cisa_kev, collect_nvd_recent_feed, collect_nvd_year_feed, collect_recent_nvd, update_epss_scores
 
 router = APIRouter(prefix="/collect", tags=["collect"])
 
@@ -103,6 +103,15 @@ async def run_nvd_year_collection(
         }
     )
     return _job_status()
+
+
+@router.post("/nvd/recent-feed", response_model=CollectionResult)
+async def run_nvd_recent_feed_collection(db: Session = Depends(get_db)) -> CollectionResult:
+    try:
+        fetched, changed = await collect_nvd_recent_feed(db)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"NVD recent feed collection failed: {exc}") from exc
+    return CollectionResult(source="NVD CVE Recent", fetched=fetched, created_or_updated=changed)
 
 
 @router.get("/nvd/year/status", response_model=CollectionJobStatus)
