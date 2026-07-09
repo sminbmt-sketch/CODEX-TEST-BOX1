@@ -302,30 +302,34 @@ export default function App() {
 
   async function testLlmSettings() {
     setState((current) => ({ ...current, action: "Test LLM", error: undefined }));
-    setLlmMessage(undefined);
+    setLlmMessage("LLM 연결을 테스트하는 중입니다.");
     try {
       const result = await api.testLlmSettings(llmPayload(llmForm));
-      setState((current) => ({ ...current, action: undefined }));
       setLlmMessage(`${result.ok ? "연결 성공" : "연결 실패"}: ${result.message}`);
       if (result.ok) {
+        setLlmMessage("연결 성공. 모델 목록을 불러오는 중입니다.");
         const modelList = await api.llmModels(llmPayload(llmForm));
         setLlmModels(modelList.models);
+        setLlmMessage(`연결 성공. ${modelList.models.length}개 모델을 불러왔습니다.`);
         if (modelList.models.length && !modelList.models.includes(llmForm.model)) {
           setLlmForm((current) => ({ ...current, model: modelList.models[0] }));
         }
       }
+      setState((current) => ({ ...current, action: undefined }));
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
       setState((current) => ({
         ...current,
         action: undefined,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: message,
       }));
+      setLlmMessage(`LLM 작업 실패: ${message}`);
     }
   }
 
   async function loadLlmModels() {
     setState((current) => ({ ...current, action: "Load LLM models", error: undefined }));
-    setLlmMessage(undefined);
+    setLlmMessage("모델 목록을 불러오는 중입니다.");
     try {
       const modelList = await api.llmModels(llmPayload(llmForm));
       setLlmModels(modelList.models);
@@ -335,11 +339,13 @@ export default function App() {
         setLlmForm((current) => ({ ...current, model: modelList.models[0] }));
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
       setState((current) => ({
         ...current,
         action: undefined,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: message,
       }));
+      setLlmMessage(`모델 목록 조회 실패: ${message}`);
     }
   }
 
@@ -1343,11 +1349,11 @@ export default function App() {
                   </button>
                   <button title="Test selected LLM provider" onClick={() => void testLlmSettings()} disabled={Boolean(state.action) || llmForm.provider === "disabled"}>
                     <Radar size={16} />
-                    <span>Test LLM</span>
+                    <span>{state.action === "Test LLM" ? "Testing..." : "Test LLM"}</span>
                   </button>
                   <button title="Load available models from selected LLM provider" onClick={() => void loadLlmModels()} disabled={Boolean(state.action) || llmForm.provider === "disabled"}>
                     <RefreshCw size={16} />
-                    <span>Load Models</span>
+                    <span>{state.action === "Load LLM models" ? "Loading..." : "Load Models"}</span>
                   </button>
                 </div>
               </div>
