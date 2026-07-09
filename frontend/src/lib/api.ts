@@ -146,6 +146,11 @@ export type LlmTestResult = {
   message: string;
 };
 
+export type LlmModelList = {
+  provider: string;
+  models: string[];
+};
+
 export type AutomationSettings = {
   enabled: boolean;
   cve_enabled: boolean;
@@ -307,6 +312,8 @@ export const api = {
     request<LlmSettings>("/api/settings/llm", { method: "PUT", body: JSON.stringify(payload) }),
   testLlmSettings: (payload?: LlmSettingsUpdate) =>
     request<LlmTestResult>("/api/settings/llm/test", { method: "POST", body: payload ? JSON.stringify(payload) : undefined }),
+  llmModels: (payload?: LlmSettingsUpdate) =>
+    request<LlmModelList>("/api/settings/llm/models", { method: "POST", body: payload ? JSON.stringify(payload) : undefined }),
   taniumTest: () => request<Record<string, unknown>>("/api/tanium/test", { method: "POST" }),
   taniumSyncEndpoints: () => request<Record<string, unknown>>("/api/tanium/sync-endpoints", { method: "POST" }),
   taniumAnalyzeImpact: () => request<Record<string, unknown>>("/api/tanium/analyze-impact", { method: "POST" }),

@@ -49,7 +49,7 @@ const pageSizeOptions = [10, 30, 50, 100];
 const currentYear = new Date().getFullYear();
 const llmDefaults: Record<LlmProvider, { baseUrl: string; model: string }> = {
   disabled: { baseUrl: "", model: "" },
-  ollama: { baseUrl: "http://localhost:11434/v1", model: "qwen2.5:1.5b" },
+  ollama: { baseUrl: "http://localhost:11434", model: "qwen2.5:1.5b" },
   openai: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini" },
   gemini: { baseUrl: "https://generativelanguage.googleapis.com/v1beta", model: "gemini-3.1-flash-lite" },
   anthropic: { baseUrl: "https://api.anthropic.com/v1", model: "claude-3-5-haiku-latest" },
@@ -226,6 +226,7 @@ export default function App() {
     maxTokens: 512,
   });
   const [llmMessage, setLlmMessage] = useState<string | undefined>();
+  const [llmModels, setLlmModels] = useState<string[]>([]);
 
   async function load() {
     setState((current) => ({ ...current, loading: true, error: undefined }));
@@ -306,6 +307,33 @@ export default function App() {
       const result = await api.testLlmSettings(llmPayload(llmForm));
       setState((current) => ({ ...current, action: undefined }));
       setLlmMessage(`${result.ok ? "연결 성공" : "연결 실패"}: ${result.message}`);
+      if (result.ok) {
+        const modelList = await api.llmModels(llmPayload(llmForm));
+        setLlmModels(modelList.models);
+        if (modelList.models.length && !modelList.models.includes(llmForm.model)) {
+          setLlmForm((current) => ({ ...current, model: modelList.models[0] }));
+        }
+      }
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        action: undefined,
+        error: error instanceof Error ? error.message : "Unknown error",
+      }));
+    }
+  }
+
+  async function loadLlmModels() {
+    setState((current) => ({ ...current, action: "Load LLM models", error: undefined }));
+    setLlmMessage(undefined);
+    try {
+      const modelList = await api.llmModels(llmPayload(llmForm));
+      setLlmModels(modelList.models);
+      setState((current) => ({ ...current, action: undefined }));
+      setLlmMessage(`${modelList.models.length}개 모델을 불러왔습니다.`);
+      if (modelList.models.length && !modelList.models.includes(llmForm.model)) {
+        setLlmForm((current) => ({ ...current, model: modelList.models[0] }));
+      }
     } catch (error) {
       setState((current) => ({
         ...current,
@@ -1237,6 +1265,7 @@ export default function App() {
                     value={llmForm.provider}
                     onChange={(event) => {
                       const provider = event.target.value as LlmProvider;
+                      setLlmModels([]);
                       setLlmForm((current) => ({
                         ...current,
                         provider,
@@ -1258,7 +1287,17 @@ export default function App() {
                 </label>
                 <label>
                   Model
-                  <input value={llmForm.model} placeholder={llmDefaults[llmForm.provider].model} onChange={(event) => setLlmForm((current) => ({ ...current, model: event.target.value }))} />
+                  {llmModels.length ? (
+                    <select value={llmForm.model} onChange={(event) => setLlmForm((current) => ({ ...current, model: event.target.value }))}>
+                      {llmModels.map((model) => (
+                        <option key={model} value={model}>
+                          {model}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input value={llmForm.model} placeholder={llmDefaults[llmForm.provider].model} onChange={(event) => setLlmForm((current) => ({ ...current, model: event.target.value }))} />
+                  )}
                 </label>
                 <label>
                   API Key
@@ -1306,11 +1345,16 @@ export default function App() {
                     <Radar size={16} />
                     <span>Test LLM</span>
                   </button>
+                  <button title="Load available models from selected LLM provider" onClick={() => void loadLlmModels()} disabled={Boolean(state.action) || llmForm.provider === "disabled"}>
+                    <RefreshCw size={16} />
+                    <span>Load Models</span>
+                  </button>
                 </div>
               </div>
               <div className="settings-note">
                 <span>Source: {state.llm?.source || "-"}</span>
                 <span>API Key: {state.llm?.has_api_key ? "Stored" : "Not set"}</span>
+                <span>Models: {llmModels.length ? `${llmModels.length} loaded` : "Not loaded"}</span>
                 {llmMessage && <strong>{llmMessage}</strong>}
               </div>
             </article>

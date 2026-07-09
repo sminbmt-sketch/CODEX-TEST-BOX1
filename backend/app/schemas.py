@@ -216,6 +216,11 @@ class LlmTestResult(BaseModel):
     message: str
 
 
+class LlmModelList(BaseModel):
+    provider: str
+    models: list[str] = Field(default_factory=list)
+
+
 class AutomationSettingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

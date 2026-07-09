@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 import json
@@ -47,7 +49,7 @@ SUMMARY_SCHEMA_EXAMPLE = {
 }
 SUMMARY_RECENT_DAYS = 7
 DEFAULT_LLM_BASE_URLS = {
-    "ollama": "http://localhost:11434/v1",
+    "ollama": "http://localhost:11434",
     "openai": "https://api.openai.com/v1",
     "gemini": "https://generativelanguage.googleapis.com/v1beta",
     "anthropic": "https://api.anthropic.com/v1",
@@ -76,6 +78,20 @@ def default_base_url(provider: str) -> str:
 
 def default_model(provider: str) -> str:
     return DEFAULT_LLM_MODELS.get(provider, settings.llm_model)
+
+
+def openai_compatible_base_url(config: LlmRuntimeConfig) -> str:
+    base_url = config.base_url.rstrip("/")
+    if config.provider == "ollama" and not base_url.endswith("/v1"):
+        return f"{base_url}/v1"
+    return base_url
+
+
+def ollama_root_url(base_url: str) -> str:
+    value = base_url.rstrip("/")
+    if value.endswith("/v1"):
+        return value[:-3].rstrip("/")
+    return value
 
 
 def get_llm_setting(db: Session) -> LlmSetting | None:
@@ -171,7 +187,7 @@ class SummaryService:
 
         async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:
             response = await client.post(
-                f"{self.config.base_url.rstrip('/')}/chat/completions",
+                f"{openai_compatible_base_url(self.config)}/chat/completions",
                 json=payload,
                 headers=headers,
             )

@@ -1,3 +1,4 @@
+import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
@@ -12,13 +13,14 @@ from app.schemas import (
     EmailSettingUpdate,
     LlmSettingOut,
     LlmSettingUpdate,
+    LlmModelList,
     LlmTestResult,
     SourceCreate,
     SourceOut,
     SourceUpdate,
 )
 from app.services.news_sources import DEFAULT_HTML_SOURCES, DEFAULT_NEWS_FEEDS
-from app.services.llm import LlmRuntimeConfig, SummaryService, default_base_url, default_model, get_llm_setting, resolve_llm_config, sanitize_llm_error
+from app.services.llm import LlmRuntimeConfig, SummaryService, default_base_url, default_model, get_llm_setting, ollama_root_url, resolve_llm_config, sanitize_llm_error
 from app.services.vulnerability_sources import CISA_KEV_URL, EPSS_URL, NVD_CVE_URL, NVD_DATA_FEEDS_URL
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -99,6 +101,38 @@ def resolve_llm_config_from_payload(payload: LlmSettingUpdate, saved: LlmSetting
     )
 
 
+async def fetch_llm_models(config: LlmRuntimeConfig) -> list[str]:
+    if config.provider == "disabled":
+        return []
+    if config.provider == "ollama":
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(f"{ollama_root_url(config.base_url)}/api/tags")
+            response.raise_for_status()
+            data = response.json()
+            return sorted(
+                model.get("name")
+                for model in data.get("models", [])
+                if model.get("name") and "completion" in (model.get("capabilities") or ["completion"])
+            )
+    if config.provider == "openai":
+        headers = {"Authorization": f"Bearer {config.api_key}"} if config.api_key else {}
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(f"{config.base_url.rstrip('/')}/models", headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            return sorted(model.get("id") for model in data.get("data", []) if model.get("id"))
+    if config.provider == "gemini":
+        params = {"key": config.api_key} if config.api_key else None
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(f"{config.base_url.rstrip('/')}/models", params=params)
+            response.raise_for_status()
+            data = response.json()
+            return sorted((model.get("name") or "").replace("models/", "") for model in data.get("models", []) if model.get("name"))
+    if config.provider == "anthropic":
+        return ["claude-3-5-haiku-latest", "claude-3-5-sonnet-latest", "claude-3-7-sonnet-latest"]
+    return []
+
+
 def get_automation_row(db: Session) -> AutomationSetting:
     row = db.scalar(select(AutomationSetting).order_by(AutomationSetting.id.asc()))
     if row is None:
@@ -136,6 +170,19 @@ def email_out(row: EmailSetting) -> EmailSettingOut:
 @router.get("/llm", response_model=LlmSettingOut)
 def get_llm_settings(db: Session = Depends(get_db)) -> LlmSettingOut:
     return _out(get_llm_setting(db))
+
+
+@router.post("/llm/models", response_model=LlmModelList)
+async def list_llm_models(
+    payload: LlmSettingUpdate | None = Body(default=None),
+    db: Session = Depends(get_db),
+) -> LlmModelList:
+    config = resolve_llm_config_from_payload(payload, get_llm_setting(db)) if payload is not None else resolve_llm_config(db)
+    try:
+        models = await fetch_llm_models(config)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"LLM model list failed: {sanitize_llm_error(exc)}") from exc
+    return LlmModelList(provider=config.provider, models=models)
 
 
 @router.get("/automation", response_model=AutomationSettingOut)
