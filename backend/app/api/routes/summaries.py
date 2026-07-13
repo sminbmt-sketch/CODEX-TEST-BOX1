@@ -8,6 +8,17 @@ from app.services.llm import build_trend_report, summarize_articles_by_ids, summ
 router = APIRouter(prefix="/summaries", tags=["summaries"])
 
 
+def _summary_result(target: str, stats) -> SummaryRunResult:
+    return SummaryRunResult(
+        target=target,
+        fetched=stats.processed,
+        summarized=stats.processed,
+        processed=stats.processed,
+        llm_success=stats.llm_success,
+        fallback=stats.fallback,
+    )
+
+
 @router.post("/articles", response_model=SummaryRunResult)
 async def summarize_articles(
     limit: int = Query(default=20, ge=1, le=100),
@@ -16,10 +27,10 @@ async def summarize_articles(
     db: Session = Depends(get_db),
 ) -> SummaryRunResult:
     try:
-        fetched, summarized = await summarize_recent_articles(db, limit=limit, days=days, include_existing=include_existing)
+        stats = await summarize_recent_articles(db, limit=limit, days=days, include_existing=include_existing)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Article summarization failed: {exc}") from exc
-    return SummaryRunResult(target="articles", fetched=fetched, summarized=summarized)
+    return _summary_result("articles", stats)
 
 
 @router.post("/vulnerabilities", response_model=SummaryRunResult)
@@ -30,10 +41,10 @@ async def summarize_vulnerabilities(
     db: Session = Depends(get_db),
 ) -> SummaryRunResult:
     try:
-        fetched, summarized = await summarize_recent_vulnerabilities(db, limit=limit, days=days, include_existing=include_existing)
+        stats = await summarize_recent_vulnerabilities(db, limit=limit, days=days, include_existing=include_existing)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Vulnerability summarization failed: {exc}") from exc
-    return SummaryRunResult(target="vulnerabilities", fetched=fetched, summarized=summarized)
+    return _summary_result("vulnerabilities", stats)
 
 
 @router.post("/articles/selected", response_model=SummaryRunResult)
@@ -42,10 +53,10 @@ async def summarize_selected_articles(
     db: Session = Depends(get_db),
 ) -> SummaryRunResult:
     try:
-        fetched, summarized = await summarize_articles_by_ids(db, payload.ids)
+        stats = await summarize_articles_by_ids(db, payload.ids)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Selected article summarization failed: {exc}") from exc
-    return SummaryRunResult(target="articles", fetched=fetched, summarized=summarized)
+    return _summary_result("articles", stats)
 
 
 @router.post("/vulnerabilities/selected", response_model=SummaryRunResult)
@@ -54,10 +65,10 @@ async def summarize_selected_vulnerabilities(
     db: Session = Depends(get_db),
 ) -> SummaryRunResult:
     try:
-        fetched, summarized = await summarize_vulnerabilities_by_ids(db, payload.ids)
+        stats = await summarize_vulnerabilities_by_ids(db, payload.ids)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Selected vulnerability summarization failed: {exc}") from exc
-    return SummaryRunResult(target="vulnerabilities", fetched=fetched, summarized=summarized)
+    return _summary_result("vulnerabilities", stats)
 
 
 @router.post("/all", response_model=list[SummaryRunResult])
@@ -68,13 +79,13 @@ async def summarize_all(
     db: Session = Depends(get_db),
 ) -> list[SummaryRunResult]:
     try:
-        article_fetched, article_summarized = await summarize_recent_articles(db, limit=limit, days=days, include_existing=include_existing)
-        vulnerability_fetched, vulnerability_summarized = await summarize_recent_vulnerabilities(db, limit=limit, days=days, include_existing=include_existing)
+        article_stats = await summarize_recent_articles(db, limit=limit, days=days, include_existing=include_existing)
+        vulnerability_stats = await summarize_recent_vulnerabilities(db, limit=limit, days=days, include_existing=include_existing)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Summarization failed: {exc}") from exc
     return [
-        SummaryRunResult(target="articles", fetched=article_fetched, summarized=article_summarized),
-        SummaryRunResult(target="vulnerabilities", fetched=vulnerability_fetched, summarized=vulnerability_summarized),
+        _summary_result("articles", article_stats),
+        _summary_result("vulnerabilities", vulnerability_stats),
     ]
 
 

@@ -1,8 +1,8 @@
 import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useMemo, useState } from "react";
 import { CalendarClock, DatabaseZap, ExternalLink, FileText, Mail, Plus, Radar, RefreshCw, Search, Server, Trash2, Wifi } from "lucide-react";
-import { api, type Article, type AutomationSettings, type CollectionJobStatus, type DashboardSummary, type DataResetTarget, type Detection, type EmailSettings, type EndpointSnapshot, type LlmProvider, type LlmSettings, type Source, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
+import { api, type Article, type AutomationSettings, type CollectionJobStatus, type DashboardSummary, type DataResetTarget, type Detection, type EmailSettings, type EndpointSnapshot, type LlmProvider, type LlmSettings, type Source, type SummaryLogItem, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
 
-type Route = "dashboard" | "cves" | "security-news" | "tanium-inventory" | "reports" | "settings";
+type Route = "dashboard" | "cves" | "security-news" | "tanium-inventory" | "reports" | "logs" | "settings";
 
 type LoadState = {
   summary?: DashboardSummary;
@@ -13,6 +13,7 @@ type LoadState = {
   inventory: EndpointSnapshot[];
   detections: Detection[];
   trends?: TrendReport;
+  summaryLogs: SummaryLogItem[];
   tanium?: TaniumStatus;
   llm?: LlmSettings;
   automation?: AutomationSettings;
@@ -33,6 +34,7 @@ const emptyState: LoadState = {
   inventory: [],
   detections: [],
   sources: [],
+  summaryLogs: [],
   loading: true,
 };
 
@@ -42,6 +44,7 @@ const navItems: { route: Route; label: string }[] = [
   { route: "security-news", label: "Security News" },
   { route: "tanium-inventory", label: "Tanium Inventory" },
   { route: "reports", label: "Reports" },
+  { route: "logs", label: "Logs" },
   { route: "settings", label: "Settings" },
 ];
 
@@ -57,7 +60,7 @@ const llmDefaults: Record<LlmProvider, { baseUrl: string; model: string }> = {
 
 function routeFromHash(): Route {
   const value = window.location.hash.replace(/^#\/?/, "");
-  if (value === "cves" || value === "security-news" || value === "tanium-inventory" || value === "reports" || value === "settings") {
+  if (value === "cves" || value === "security-news" || value === "tanium-inventory" || value === "reports" || value === "logs" || value === "settings") {
     return value;
   }
   return "dashboard";
@@ -167,6 +170,22 @@ function SummaryStatusBadge({ status }: { status?: string | null }) {
   return <span className="pill neutral">No LLM</span>;
 }
 
+function summaryErrorLabel(error?: string | null) {
+  if (error === "json_parse_failed") return "JSON 파싱 실패";
+  if (error === "missing_cve_id") return "CVE ID 누락";
+  if (error === "not_korean") return "한국어 요약 부족";
+  if (error === "llm_exception") return "LLM 호출 실패";
+  return error || "사유 미기록";
+}
+
+function summaryErrorAction(error?: string | null) {
+  if (error === "json_parse_failed") return "max_tokens를 늘리거나 JSON 응답 프롬프트를 더 짧게 조정합니다.";
+  if (error === "missing_cve_id") return "CVE 전용 프롬프트를 재시도하거나 백엔드 CVE ID 자동 보정을 적용합니다.";
+  if (error === "not_korean") return "한국어 출력 지시를 강화하거나 같은 항목을 재요약합니다.";
+  if (error === "llm_exception") return "LLM Provider 연결, quota, timeout, 모델 상태를 확인합니다.";
+  return "해당 항목을 개별 재요약하고 필요 시 LLM 설정을 확인합니다.";
+}
+
 export default function App() {
   const [state, setState] = useState<LoadState>(emptyState);
   const [route, setRoute] = useState<Route>(() => routeFromHash());
@@ -233,7 +252,7 @@ export default function App() {
     try {
       const cveParams = { limit: cvePageSize, offset: (cvePage - 1) * cvePageSize, q: cveSearch.trim() || undefined, sort: cveSort, severity: cveSeverity || undefined };
       const newsParams = { limit: newsPageSize, offset: (newsPage - 1) * newsPageSize, q: newsSearch.trim() || undefined, sort: newsSort, category: newsCategory };
-      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, automation, email, sources, nvdYearJob, epssJob] = await Promise.all([
+      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, automation, email, sources, nvdYearJob, epssJob, summaryLogs] = await Promise.all([
         api.summary(),
         api.vulnerabilities(cveParams),
         api.vulnerabilityCount(cveParams),
@@ -249,8 +268,9 @@ export default function App() {
         api.sources(),
         api.nvdYearStatus(),
         api.epssStatus(),
+        api.summaryFailureLogs(),
       ]);
-      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, automation, email, nvdYearJob, epssJob, sources, loading: false });
+      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, automation, email, nvdYearJob, epssJob, sources, summaryLogs, loading: false });
       setSourceDrafts(Object.fromEntries(sources.map((source) => [source.id, { name: source.name, kind: source.kind, url: source.url || "", enabled: source.enabled }])));
       setLlmForm((current) => ({
         ...current,
@@ -909,6 +929,73 @@ export default function App() {
           <section>
             <PageTitle title="Reports" description="운영 보고서 영역입니다. 이후 CVE 조치 현황과 뉴스 브리핑 내보내기를 연결합니다." />
             <div className="page-card placeholder">Reports page placeholder</div>
+          </section>
+        )}
+
+        {route === "logs" && (
+          <section>
+            <PageTitle title="Logs" description="요약 실패와 fallback 사유를 확인하고 재시도 기준을 판단합니다." badge={`${state.summaryLogs.length} fallback logs`} />
+            <div className="page-grid">
+              <article className="page-card">
+                <header>
+                  <div>
+                    <h3>로그 확인 방법</h3>
+                    <p>요약 요청은 성공했지만 LLM 검증을 통과하지 못하면 fallback으로 저장됩니다.</p>
+                  </div>
+                  <span className="pill neutral">Summary</span>
+                </header>
+                <div className="body">
+                  <article className="post">
+                    <h4>운영 기준</h4>
+                    <p>
+                      `processed`는 처리한 항목 수, `llm_success`는 LLM 요약 저장 성공 수, `fallback`은 원문 일부로 대체된 수입니다.
+                      fallback 항목은 아래 사유를 보고 프롬프트, max_tokens, LLM 연결 상태를 조정한 뒤 개별 또는 선택 요약으로 재시도합니다.
+                    </p>
+                    <div className="meta">
+                      <span>json_parse_failed: JSON 출력 깨짐</span>
+                      <span>missing_cve_id: CVE ID 미포함</span>
+                      <span>not_korean: 한국어 부족</span>
+                      <span>llm_exception: 호출 실패</span>
+                    </div>
+                  </article>
+                </div>
+              </article>
+              {state.summaryLogs.map((item) => (
+                <article key={`${item.target}-${item.item_id}`} className="page-card">
+                  <header>
+                    <div>
+                      <h3>
+                        {item.source_url ? (
+                          <a href={item.source_url} target="_blank" rel="noreferrer">
+                            {item.title} <ExternalLink size={13} />
+                          </a>
+                        ) : (
+                          item.title
+                        )}
+                      </h3>
+                      <p>{item.target.toUpperCase()} · {formatDate(item.published_at)}</p>
+                    </div>
+                    <div className="badge-stack">
+                      <span className="pill neutral">{summaryErrorLabel(item.error)}</span>
+                      <span className="pill neutral">{item.status || "fallback"}</span>
+                    </div>
+                  </header>
+                  <div className="body">
+                    <article className="post">
+                      <h4>조치 방향</h4>
+                      <p>{summaryErrorAction(item.error)}</p>
+                      {item.summary_preview && (
+                        <div className="source-excerpt">
+                          <strong>저장된 fallback 내용</strong>
+                          <p>{item.summary_preview}</p>
+                        </div>
+                      )}
+                    </article>
+                  </div>
+                </article>
+              ))}
+              {!state.summaryLogs.length && <div className="empty block">No summary fallback logs</div>}
+            </div>
           </section>
         )}
 

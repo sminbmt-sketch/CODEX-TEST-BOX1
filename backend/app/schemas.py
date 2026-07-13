@@ -44,6 +44,7 @@ class ArticleOut(BaseModel):
     published_at: datetime | None = None
     summary: str | None = None
     summary_status: str | None = None
+    summary_error: str | None = None
     tags: dict | list | None = None
     risk_score: float
     source: SourceOut | None = None
@@ -58,6 +59,7 @@ class VulnerabilityOut(BaseModel):
     description: str | None = None
     summary: str | None = None
     summary_status: str | None = None
+    summary_error: str | None = None
     cvss_score: float | None = None
     cvss_severity: str | None = None
     epss_score: float | None = None
@@ -144,11 +146,25 @@ class SummaryRunResult(BaseModel):
     target: str
     fetched: int = 0
     summarized: int = 0
+    processed: int = 0
+    llm_success: int = 0
+    fallback: int = 0
     errors: list[str] = Field(default_factory=list)
 
 
 class SummarySelectionRequest(BaseModel):
     ids: list[int] = Field(default_factory=list)
+
+
+class SummaryLogItem(BaseModel):
+    target: str
+    item_id: int
+    title: str
+    status: str | None = None
+    error: str | None = None
+    published_at: datetime | None = None
+    source_url: str | None = None
+    summary_preview: str | None = None
 
 
 class TrendNewsItem(BaseModel):

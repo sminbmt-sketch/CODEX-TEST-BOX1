@@ -72,6 +72,13 @@ class LlmRuntimeConfig:
     max_tokens: int
 
 
+@dataclass(frozen=True)
+class SummaryStats:
+    processed: int
+    llm_success: int
+    fallback: int
+
+
 def default_base_url(provider: str) -> str:
     return DEFAULT_LLM_BASE_URLS.get(provider, settings.llm_base_url)
 
@@ -310,7 +317,7 @@ def _canonicalize_summary(value: str) -> str:
     return "\n".join(lines).strip()
 
 
-def _extract_json_summary(value: str) -> str | None:
+def _extract_json_summary(value: str) -> tuple[str | None, str | None]:
     text = THINK_BLOCK_RE.sub("", value).strip()
     match = JSON_BLOCK_RE.search(text)
     if match:
@@ -318,14 +325,14 @@ def _extract_json_summary(value: str) -> str | None:
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:
-        return None
+        return None, "json_parse_failed"
     content = payload.get("content") if isinstance(payload, dict) else None
     summary = content.get("summary") if isinstance(content, dict) else None
     if isinstance(summary, str):
-        return summary
+        return summary, None
     if isinstance(summary, list):
-        return "\n".join(str(item) for item in summary if item)
-    return None
+        return "\n".join(str(item) for item in summary if item), None
+    return None, "json_parse_failed"
 
 
 def _fallback_article_summary(article: Article) -> str:
@@ -341,52 +348,61 @@ def _fallback_vulnerability_summary(vulnerability: Vulnerability) -> str:
     return vulnerability.title or vulnerability.cve_id
 
 
-def _usable_summary(summary: str | None, required_terms: list[str] | None = None) -> str | None:
+def _usable_summary(summary: str | None, required_cve_id: str | None = None) -> tuple[str | None, str | None]:
     if not summary:
-        return None
-    extracted = _extract_json_summary(summary)
+        return None, "llm_exception"
+    extracted, json_error = _extract_json_summary(summary)
     stripped = THINK_BLOCK_RE.sub("", summary).strip()
     if extracted is None and stripped.startswith(("{", "[")):
-        return None
+        return None, json_error or "json_parse_failed"
     cleaned = _canonicalize_summary(extracted or summary)
     if not _has_korean_text(cleaned):
-        return None
+        return None, "not_korean"
     lowered = cleaned.lower()
-    if required_terms and not any(term.lower() in lowered for term in required_terms):
-        return None
-    return _limit_summary_lines(cleaned)
+    if required_cve_id and required_cve_id.lower() not in lowered:
+        return None, "missing_cve_id"
+    return _limit_summary_lines(cleaned), None
 
 
 def _recent_cutoff(days: int = SUMMARY_RECENT_DAYS) -> datetime:
     return datetime.now(timezone.utc) - timedelta(days=days)
 
 
-async def _summarize_article_rows(db: Session, rows: list[Article]) -> tuple[int, int]:
-    changed = 0
+async def _summarize_article_rows(db: Session, rows: list[Article]) -> SummaryStats:
+    llm_success = 0
+    fallback = 0
     llm_config = resolve_llm_config(db)
     service = SummaryService(llm_config)
     for article in rows:
         body = article.raw_excerpt or article.title
         summary = None
+        exception_reason = None
         if llm_config.provider != "disabled":
             try:
                 summary = await service.summarize(article.title, body, [article.url], source_type="news")
             except Exception:
+                exception_reason = "llm_exception"
                 summary = None
-        usable_summary = _usable_summary(summary)
+        usable_summary, reason = _usable_summary(summary)
         article.summary = usable_summary or _fallback_article_summary(article)
         article.summary_status = "llm" if usable_summary else "fallback"
-        changed += 1
+        article.summary_error = None if usable_summary else exception_reason or reason
+        if usable_summary:
+            llm_success += 1
+        else:
+            fallback += 1
     db.commit()
-    return len(rows), changed
+    return SummaryStats(processed=len(rows), llm_success=llm_success, fallback=fallback)
 
 
-async def _summarize_vulnerability_rows(db: Session, rows: list[Vulnerability]) -> tuple[int, int]:
-    changed = 0
+async def _summarize_vulnerability_rows(db: Session, rows: list[Vulnerability]) -> SummaryStats:
+    llm_success = 0
+    fallback = 0
     llm_config = resolve_llm_config(db)
     service = SummaryService(llm_config)
     for vulnerability in rows:
         summary = None
+        exception_reason = None
         if llm_config.provider != "disabled":
             try:
                 summary = await service.summarize(
@@ -396,19 +412,21 @@ async def _summarize_vulnerability_rows(db: Session, rows: list[Vulnerability]) 
                     source_type="cve",
                 )
             except Exception:
+                exception_reason = "llm_exception"
                 summary = None
-        required_terms = [vulnerability.cve_id]
-        if vulnerability.product:
-            required_terms.append(vulnerability.product)
-        usable_summary = _usable_summary(summary, required_terms=required_terms)
+        usable_summary, reason = _usable_summary(summary, required_cve_id=vulnerability.cve_id)
         vulnerability.summary = usable_summary or _fallback_vulnerability_summary(vulnerability)
         vulnerability.summary_status = "llm" if usable_summary else "fallback"
-        changed += 1
+        vulnerability.summary_error = None if usable_summary else exception_reason or reason
+        if usable_summary:
+            llm_success += 1
+        else:
+            fallback += 1
     db.commit()
-    return len(rows), changed
+    return SummaryStats(processed=len(rows), llm_success=llm_success, fallback=fallback)
 
 
-async def summarize_recent_articles(db: Session, limit: int | None = 20, days: int = SUMMARY_RECENT_DAYS, include_existing: bool = False) -> tuple[int, int]:
+async def summarize_recent_articles(db: Session, limit: int | None = 20, days: int = SUMMARY_RECENT_DAYS, include_existing: bool = False) -> SummaryStats:
     cutoff = _recent_cutoff(days)
     query = (
         select(Article)
@@ -424,14 +442,14 @@ async def summarize_recent_articles(db: Session, limit: int | None = 20, days: i
     return await _summarize_article_rows(db, rows)
 
 
-async def summarize_articles_by_ids(db: Session, ids: list[int]) -> tuple[int, int]:
+async def summarize_articles_by_ids(db: Session, ids: list[int]) -> SummaryStats:
     if not ids:
-        return 0, 0
+        return SummaryStats(processed=0, llm_success=0, fallback=0)
     rows = db.scalars(select(Article).options(selectinload(Article.source)).where(Article.id.in_(ids))).all()
     return await _summarize_article_rows(db, rows)
 
 
-async def summarize_recent_vulnerabilities(db: Session, limit: int | None = 20, days: int = SUMMARY_RECENT_DAYS, include_existing: bool = False) -> tuple[int, int]:
+async def summarize_recent_vulnerabilities(db: Session, limit: int | None = 20, days: int = SUMMARY_RECENT_DAYS, include_existing: bool = False) -> SummaryStats:
     cutoff = _recent_cutoff(days)
     query = (
         select(Vulnerability)
@@ -451,9 +469,9 @@ async def summarize_recent_vulnerabilities(db: Session, limit: int | None = 20, 
     return await _summarize_vulnerability_rows(db, rows)
 
 
-async def summarize_vulnerabilities_by_ids(db: Session, ids: list[int]) -> tuple[int, int]:
+async def summarize_vulnerabilities_by_ids(db: Session, ids: list[int]) -> SummaryStats:
     if not ids:
-        return 0, 0
+        return SummaryStats(processed=0, llm_success=0, fallback=0)
     rows = db.scalars(select(Vulnerability).where(Vulnerability.id.in_(ids))).all()
     return await _summarize_vulnerability_rows(db, rows)
 

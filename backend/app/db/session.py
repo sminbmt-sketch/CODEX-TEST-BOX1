@@ -38,6 +38,8 @@ def _ensure_schema() -> None:
             connection.execute(text("ALTER TABLE vulnerabilities ADD COLUMN summary TEXT"))
         if "summary_status" not in vulnerability_columns:
             connection.execute(text("ALTER TABLE vulnerabilities ADD COLUMN summary_status VARCHAR(32)"))
+        if "summary_error" not in vulnerability_columns:
+            connection.execute(text("ALTER TABLE vulnerabilities ADD COLUMN summary_error VARCHAR(64)"))
         if "epss_percentile" not in vulnerability_columns:
             connection.execute(text("ALTER TABLE vulnerabilities ADD COLUMN epss_percentile FLOAT"))
         if "epss_updated_at" not in vulnerability_columns:
@@ -46,6 +48,8 @@ def _ensure_schema() -> None:
             connection.execute(text("ALTER TABLE vulnerabilities ADD COLUMN epss_checked_at TIMESTAMP WITH TIME ZONE"))
         if "summary_status" not in article_columns:
             connection.execute(text("ALTER TABLE articles ADD COLUMN summary_status VARCHAR(32)"))
+        if "summary_error" not in article_columns:
+            connection.execute(text("ALTER TABLE articles ADD COLUMN summary_error VARCHAR(64)"))
         if "mac_address" not in endpoint_columns:
             connection.execute(text("ALTER TABLE endpoint_snapshots ADD COLUMN mac_address VARCHAR(64)"))
         if "platform" not in endpoint_columns:

@@ -33,6 +33,7 @@ export type Article = {
   published_at?: string | null;
   summary?: string | null;
   summary_status?: string | null;
+  summary_error?: string | null;
   raw_excerpt?: string | null;
   tags?: unknown;
   risk_score: number;
@@ -46,6 +47,7 @@ export type Vulnerability = {
   description?: string | null;
   summary?: string | null;
   summary_status?: string | null;
+  summary_error?: string | null;
   cvss_score?: number | null;
   cvss_severity?: string | null;
   epss_score?: number | null;
@@ -207,6 +209,27 @@ export type CollectionJobStatus = {
   finished_at?: string | null;
 };
 
+export type SummaryRunResult = {
+  target: string;
+  fetched: number;
+  summarized: number;
+  processed: number;
+  llm_success: number;
+  fallback: number;
+  errors: string[];
+};
+
+export type SummaryLogItem = {
+  target: "cve" | "news";
+  item_id: number;
+  title: string;
+  status?: string | null;
+  error?: string | null;
+  published_at?: string | null;
+  source_url?: string | null;
+  summary_preview?: string | null;
+};
+
 type ListParams = {
   limit?: number;
   offset?: number;
@@ -320,13 +343,14 @@ export const api = {
   inventory: () => request<EndpointSnapshot[]>("/api/tanium/inventory?limit=1000"),
   detections: () => request<Detection[]>("/api/tanium/detections?limit=25"),
   trends: () => request<TrendReport>("/api/summaries/trends?limit=8"),
-  summarizeArticles: (params?: SummaryParams) => request<Record<string, unknown>>(`/api/summaries/articles${summaryQuery(params ?? { limit: 20 })}`, { method: "POST" }),
-  summarizeVulnerabilities: (params?: SummaryParams) => request<Record<string, unknown>>(`/api/summaries/vulnerabilities${summaryQuery(params ?? { limit: 20 })}`, { method: "POST" }),
+  summarizeArticles: (params?: SummaryParams) => request<SummaryRunResult>(`/api/summaries/articles${summaryQuery(params ?? { limit: 20 })}`, { method: "POST" }),
+  summarizeVulnerabilities: (params?: SummaryParams) => request<SummaryRunResult>(`/api/summaries/vulnerabilities${summaryQuery(params ?? { limit: 20 })}`, { method: "POST" }),
   summarizeSelectedArticles: (ids: number[]) =>
-    request<Record<string, unknown>>("/api/summaries/articles/selected", { method: "POST", body: JSON.stringify({ ids }) }),
+    request<SummaryRunResult>("/api/summaries/articles/selected", { method: "POST", body: JSON.stringify({ ids }) }),
   summarizeSelectedVulnerabilities: (ids: number[]) =>
-    request<Record<string, unknown>>("/api/summaries/vulnerabilities/selected", { method: "POST", body: JSON.stringify({ ids }) }),
-  summarizeAll: (params?: SummaryParams) => request<Record<string, unknown>[]>(`/api/summaries/all${summaryQuery(params)}`, { method: "POST" }),
+    request<SummaryRunResult>("/api/summaries/vulnerabilities/selected", { method: "POST", body: JSON.stringify({ ids }) }),
+  summarizeAll: (params?: SummaryParams) => request<SummaryRunResult[]>(`/api/summaries/all${summaryQuery(params)}`, { method: "POST" }),
+  summaryFailureLogs: () => request<SummaryLogItem[]>("/api/logs/summary-failures?limit=100"),
   collectNvd: () => request("/api/collect/nvd", { method: "POST" }),
   collectNvdRecentFeed: () => request("/api/collect/nvd/recent-feed", { method: "POST" }),
   collectNvdYear: (startYear: number, endYear: number) =>
