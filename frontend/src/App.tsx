@@ -407,6 +407,14 @@ export default function App() {
     await runAction("Summaries", () => api.summarizeAll({ days: summaryDays, includeExisting: includeExistingSummaries }));
   }
 
+  async function runCveSummariesUpdate() {
+    await runAction("CVE summaries", () => api.summarizeVulnerabilities({ days: summaryDays, includeExisting: includeExistingSummaries }));
+  }
+
+  async function runNewsSummariesUpdate() {
+    await runAction("News summaries", () => api.summarizeArticles({ days: summaryDays, includeExisting: includeExistingSummaries }));
+  }
+
   async function runSelectedCveSummaries() {
     await runAction(`Summarize ${selectedCveIds.length} CVEs`, async () => {
       await api.summarizeSelectedVulnerabilities(selectedCveIds);
@@ -1392,9 +1400,17 @@ export default function App() {
                   기존 업데이트 정보 요청
                 </label>
                 <div className="settings-actions">
-                  <button title="Translate and summarize selected period" onClick={() => void runSummariesUpdate()} disabled={Boolean(state.action)}>
+                  <button title="Translate and summarize CVE and Security News for selected period" onClick={() => void runSummariesUpdate()} disabled={Boolean(state.action)}>
                     <FileText size={16} />
-                    <span>Summaries</span>
+                    <span>All Summaries</span>
+                  </button>
+                  <button title="Translate and summarize CVEs for selected period" onClick={() => void runCveSummariesUpdate()} disabled={Boolean(state.action)}>
+                    <FileText size={16} />
+                    <span>CVE Summary</span>
+                  </button>
+                  <button title="Translate and summarize Security News for selected period" onClick={() => void runNewsSummariesUpdate()} disabled={Boolean(state.action)}>
+                    <FileText size={16} />
+                    <span>News Summary</span>
                   </button>
                 </div>
               </div>
