@@ -122,6 +122,31 @@ def sanitize_llm_error(exc: Exception) -> str:
     return re.sub(r"key=[^\\s&]+", "key=REDACTED", message)
 
 
+def llm_error_detail(config: LlmRuntimeConfig, exc: Exception) -> str:
+    if isinstance(exc, httpx.TimeoutException):
+        reason = f"timeout after {config.timeout_seconds}s"
+    elif isinstance(exc, httpx.HTTPStatusError):
+        reason = sanitize_llm_error(exc)
+    elif isinstance(exc, (KeyError, IndexError, TypeError, ValueError)):
+        reason = f"response_parse_error: {type(exc).__name__}: {sanitize_llm_error(exc)}"
+    else:
+        reason = f"{type(exc).__name__}: {sanitize_llm_error(exc)}"
+    detail = (
+        f"provider={config.provider}; model={config.model}; "
+        f"timeout_seconds={config.timeout_seconds}; max_tokens={config.max_tokens}; reason={reason}"
+    )
+    return detail[:2000]
+
+
+def validation_error_detail(config: LlmRuntimeConfig, reason: str | None) -> str | None:
+    if not reason:
+        return None
+    return (
+        f"provider={config.provider}; model={config.model}; "
+        f"timeout_seconds={config.timeout_seconds}; max_tokens={config.max_tokens}; reason={reason}"
+    )
+
+
 def resolve_llm_config(db: Session | None = None) -> LlmRuntimeConfig:
     row = get_llm_setting(db) if db is not None else None
     provider = row.provider if row else settings.llm_provider
@@ -377,16 +402,19 @@ async def _summarize_article_rows(db: Session, rows: list[Article]) -> SummarySt
         body = article.raw_excerpt or article.title
         summary = None
         exception_reason = None
+        exception_detail = None
         if llm_config.provider != "disabled":
             try:
                 summary = await service.summarize(article.title, body, [article.url], source_type="news")
-            except Exception:
+            except Exception as exc:
                 exception_reason = "llm_exception"
+                exception_detail = llm_error_detail(llm_config, exc)
                 summary = None
         usable_summary, reason = _usable_summary(summary)
         article.summary = usable_summary or _fallback_article_summary(article)
         article.summary_status = "llm" if usable_summary else "fallback"
         article.summary_error = None if usable_summary else exception_reason or reason
+        article.summary_error_detail = None if usable_summary else exception_detail or validation_error_detail(llm_config, reason)
         if usable_summary:
             llm_success += 1
         else:
@@ -403,6 +431,7 @@ async def _summarize_vulnerability_rows(db: Session, rows: list[Vulnerability]) 
     for vulnerability in rows:
         summary = None
         exception_reason = None
+        exception_detail = None
         if llm_config.provider != "disabled":
             try:
                 summary = await service.summarize(
@@ -411,13 +440,15 @@ async def _summarize_vulnerability_rows(db: Session, rows: list[Vulnerability]) 
                     [vulnerability.source_url] if vulnerability.source_url else [],
                     source_type="cve",
                 )
-            except Exception:
+            except Exception as exc:
                 exception_reason = "llm_exception"
+                exception_detail = llm_error_detail(llm_config, exc)
                 summary = None
         usable_summary, reason = _usable_summary(summary, required_cve_id=vulnerability.cve_id)
         vulnerability.summary = usable_summary or _fallback_vulnerability_summary(vulnerability)
         vulnerability.summary_status = "llm" if usable_summary else "fallback"
         vulnerability.summary_error = None if usable_summary else exception_reason or reason
+        vulnerability.summary_error_detail = None if usable_summary else exception_detail or validation_error_detail(llm_config, reason)
         if usable_summary:
             llm_success += 1
         else:

@@ -34,6 +34,7 @@ export type Article = {
   summary?: string | null;
   summary_status?: string | null;
   summary_error?: string | null;
+  summary_error_detail?: string | null;
   raw_excerpt?: string | null;
   tags?: unknown;
   risk_score: number;
@@ -48,6 +49,7 @@ export type Vulnerability = {
   summary?: string | null;
   summary_status?: string | null;
   summary_error?: string | null;
+  summary_error_detail?: string | null;
   cvss_score?: number | null;
   cvss_severity?: string | null;
   epss_score?: number | null;
@@ -225,6 +227,7 @@ export type SummaryLogItem = {
   title: string;
   status?: string | null;
   error?: string | null;
+  error_detail?: string | null;
   published_at?: string | null;
   source_url?: string | null;
   summary_preview?: string | null;

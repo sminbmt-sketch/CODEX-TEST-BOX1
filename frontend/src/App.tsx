@@ -984,6 +984,12 @@ export default function App() {
                     <article className="post">
                       <h4>조치 방향</h4>
                       <p>{summaryErrorAction(item.error)}</p>
+                      {item.error_detail && (
+                        <div className="source-excerpt">
+                          <strong>상세 원인</strong>
+                          <p>{item.error_detail}</p>
+                        </div>
+                      )}
                       {item.summary_preview && (
                         <div className="source-excerpt">
                           <strong>저장된 fallback 내용</strong>

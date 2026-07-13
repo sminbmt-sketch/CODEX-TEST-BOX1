@@ -45,6 +45,7 @@ class ArticleOut(BaseModel):
     summary: str | None = None
     summary_status: str | None = None
     summary_error: str | None = None
+    summary_error_detail: str | None = None
     tags: dict | list | None = None
     risk_score: float
     source: SourceOut | None = None
@@ -60,6 +61,7 @@ class VulnerabilityOut(BaseModel):
     summary: str | None = None
     summary_status: str | None = None
     summary_error: str | None = None
+    summary_error_detail: str | None = None
     cvss_score: float | None = None
     cvss_severity: str | None = None
     epss_score: float | None = None
@@ -162,6 +164,7 @@ class SummaryLogItem(BaseModel):
     title: str
     status: str | None = None
     error: str | None = None
+    error_detail: str | None = None
     published_at: datetime | None = None
     source_url: str | None = None
     summary_preview: str | None = None
