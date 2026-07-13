@@ -133,30 +133,59 @@ class SummaryService:
     def __init__(self, config: LlmRuntimeConfig):
         self.config = config
 
-    async def summarize(self, title: str, body: str, source_urls: list[str], source_type: str = "news") -> str | None:
-        if self.config.provider == "disabled":
-            return None
+    def _prompts(self, title: str, body: str, source_urls: list[str], source_type: str) -> tuple[str, str]:
+        system_rules = [
+            "You are a Korean security analyst. Analyze only the provided source text.",
+            "Return valid JSON only, with no markdown, no code fences, and no explanatory prose.",
+            "The content.summary value must be Korean, 1-5 lines, and focused on security impact and recommended action.",
+            "Write within the configured max_tokens budget and keep the JSON compact enough to avoid truncation.",
+            "Do not add labels such as '요약:' or '[보안 요약]' inside any value.",
+            "Do not invent affected products, CVEs, entities, or IOCs. Use empty arrays when evidence is absent.",
+            "IOC fields must include only values explicitly present in the source text.",
+            "Do not include chain-of-thought, hidden reasoning, or <think> blocks.",
+        ]
+        source_rules = [
+            "응답은 반드시 valid JSON이어야 하며 markdown, 설명, 코드블록을 포함하지 마세요.",
+            "원문에 없는 정보는 추측하지 말고 빈 배열 또는 null로 두세요.",
+            "content.summary는 반드시 한국어 1~5줄로 작성하세요.",
+            f"현재 max_tokens 설정값은 {self.config.max_tokens}입니다. 이 제한 안에서 JSON이 잘리지 않도록 간결하게 출력하세요.",
+            "IOC는 원문에 명시된 값만 포함하세요.",
+        ]
+        if source_type == "cve":
+            system_rules.extend(
+                [
+                    "For CVE input, content.summary must include the exact CVE ID from the title or body.",
+                    "For CVE input, explain the vulnerability content plainly: affected product/component, vulnerability type, impact, and required update or mitigation when present.",
+                    "For CVE input, do not provide deep technical interpretation, exploit-chain speculation, root-cause analysis, or assumptions beyond the source text.",
+                ]
+            )
+            source_rules.extend(
+                [
+                    "CVE 전용 규칙:",
+                    "- content.summary 첫 문장에는 반드시 정확한 CVE ID를 포함하세요.",
+                    "- 기술적인 해석, 공격 시나리오 추론, 원인 분석은 제외하고 취약 내용 자체를 설명하세요.",
+                    "- 영향 제품/구성요소, 취약점 유형, 영향도, 업데이트 또는 완화 조치가 원문에 있으면 간결하게 포함하세요.",
+                    "- 원문에 없는 제품명, 버전, 영향도, 조치 사항은 만들지 마세요.",
+                ]
+            )
 
-        system_prompt = (
-            "You are a Korean security analyst. Analyze only the provided source text. "
-            "Return valid JSON only, with no markdown, no code fences, and no explanatory prose. "
-            "The content.summary value must be Korean, 1-5 lines, and focused on security impact and recommended action. "
-            "Do not add labels such as '요약:' or '[보안 요약]' inside any value. "
-            "Do not invent affected products, CVEs, entities, or IOCs. Use empty arrays when evidence is absent. "
-            "IOC fields must include only values explicitly present in the source text. "
-            "Do not include chain-of-thought, hidden reasoning, or <think> blocks."
-        )
         schema = json.dumps(SUMMARY_SCHEMA_EXAMPLE, ensure_ascii=False, indent=2)
+        system_prompt = " ".join(system_rules)
         user_prompt = (
             "아래 보안 뉴스/CVE 원문을 분석해서 지정된 JSON 스키마만 출력하세요.\n"
-            "응답은 반드시 valid JSON이어야 하며 markdown, 설명, 코드블록을 포함하지 마세요.\n"
-            "원문에 없는 정보는 추측하지 말고 빈 배열 또는 null로 두세요.\n"
-            "content.summary는 반드시 한국어 1~5줄로 작성하세요.\n"
-            "IOC는 원문에 명시된 값만 포함하세요.\n\n"
+            + "\n".join(source_rules)
+            + "\n\n"
             f"지정 JSON 스키마:\n{schema}\n\n"
             f"source_type: {source_type}\n"
             f"Title: {title}\n\nBody:\n{body[:8000]}\n\nSources:\n" + "\n".join(source_urls)
         )
+        return system_prompt, user_prompt
+
+    async def summarize(self, title: str, body: str, source_urls: list[str], source_type: str = "news") -> str | None:
+        if self.config.provider == "disabled":
+            return None
+
+        system_prompt, user_prompt = self._prompts(title, body, source_urls, source_type)
         if self.config.provider in {"ollama", "openai"}:
             return await self._chat_completions(system_prompt, user_prompt)
         if self.config.provider == "gemini":
