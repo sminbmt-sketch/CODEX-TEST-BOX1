@@ -131,6 +131,24 @@ function previewItems(value: unknown, limit = 3) {
   return asRecordList(value).slice(0, limit);
 }
 
+function processValues(value: unknown) {
+  return asRecordList(value).flatMap((item) => {
+    const values = item.values;
+    if (Array.isArray(values)) return values.map((entry) => String(entry)).filter(Boolean);
+    const text = displayField(item, ["name", "process", "command", "column"]);
+    return text === "-" ? [] : [text];
+  });
+}
+
+function groupedSbomPackages(value: unknown) {
+  return asRecordList(value).reduce<Record<string, Record<string, unknown>[]>>((groups, item) => {
+    const type = displayField(item, ["type", "Type"]);
+    const key = type === "-" ? "Unknown" : type;
+    groups[key] = [...(groups[key] || []), item];
+    return groups;
+  }, {});
+}
+
 function vulnerabilitySummary(item: Vulnerability) {
   return item.summary || item.description || "수집된 원문 링크와 CVE 메타데이터 확인이 필요합니다.";
 }
@@ -273,6 +291,7 @@ export default function App() {
   });
   const [llmMessage, setLlmMessage] = useState<string | undefined>();
   const [llmModels, setLlmModels] = useState<string[]>([]);
+  const [inventoryDetail, setInventoryDetail] = useState<{ endpoint: EndpointSnapshot; type: "software" | "processes" | "sbom" } | null>(null);
 
   async function load() {
     setState((current) => ({ ...current, loading: true, error: undefined }));
@@ -920,7 +939,7 @@ export default function App() {
 
         {route === "tanium-inventory" && (
           <section>
-            <PageTitle title="Tanium Inventory" description="Tanium API로 수집한 단말, 설치 프로그램, 실행 프로세스, SBOM 기반 finding 정보를 제공합니다." badge={`${state.summary?.endpoint_count ?? state.inventory.length} endpoints`} tone="ok" />
+            <PageTitle title="Tanium Inventory" description="Tanium API로 수집한 단말, 설치 프로그램, 실행 프로세스, SBOM Package 정보를 제공합니다." badge={`${state.summary?.endpoint_count ?? state.inventory.length} endpoints`} tone="ok" />
             <article className="page-card">
               <header>
                 <div>
@@ -947,42 +966,10 @@ export default function App() {
                       <span>{[endpoint.os_name, endpoint.os_version].filter(Boolean).join(" ") || "-"}</span>
                       <span>{endpointPlatform(endpoint)}</span>
                       <span className="inventory-counts">
-                        <b>SW {itemCount(endpoint.software)}</b>
-                        <b>PROC {itemCount(endpoint.processes)}</b>
-                        <b>SBOM {itemCount(endpoint.sbom)}</b>
+                        <button type="button" onClick={() => setInventoryDetail({ endpoint, type: "software" })}>Software {itemCount(endpoint.software)}</button>
+                        <button type="button" onClick={() => setInventoryDetail({ endpoint, type: "processes" })}>Process {processValues(endpoint.processes).length}</button>
+                        <button type="button" onClick={() => setInventoryDetail({ endpoint, type: "sbom" })}>SBOM {itemCount(endpoint.sbom)}</button>
                       </span>
-                    </div>
-                    <div className="inventory-detail-grid">
-                      <div>
-                        <h4>Installed Software</h4>
-                        {previewItems(endpoint.software).map((item, index) => (
-                          <p key={`software-${endpoint.id}-${index}`}>
-                            <strong>{displayField(item, ["name"])}</strong>
-                            <span>{displayField(item, ["version"])}</span>
-                          </p>
-                        ))}
-                        {!itemCount(endpoint.software) && <p className="muted">수집된 설치 프로그램 없음</p>}
-                      </div>
-                      <div>
-                        <h4>Processes</h4>
-                        {previewItems(endpoint.processes).map((item, index) => (
-                          <p key={`process-${endpoint.id}-${index}`}>
-                            <strong>{displayField(item, ["column", "sensor"])}</strong>
-                            <span>{displayField(item, ["values"])}</span>
-                          </p>
-                        ))}
-                        {!itemCount(endpoint.processes) && <p className="muted">프로세스 센서 결과 없음</p>}
-                      </div>
-                      <div>
-                        <h4>SBOM Findings</h4>
-                        {previewItems(endpoint.sbom).map((item, index) => (
-                          <p key={`sbom-${endpoint.id}-${index}`}>
-                            <strong>{displayField(item, ["cveId"])}</strong>
-                            <span>{displayField(item, ["detectedProducts", "severityV3", "severity"])}</span>
-                          </p>
-                        ))}
-                        {!itemCount(endpoint.sbom) && <p className="muted">SBOM 기반 finding 없음</p>}
-                      </div>
                     </div>
                   </article>
                 ))}
@@ -1582,7 +1569,94 @@ export default function App() {
           </section>
         )}
       </section>
+      {inventoryDetail && (
+        <InventoryDetailModal
+          endpoint={inventoryDetail.endpoint}
+          type={inventoryDetail.type}
+          onClose={() => setInventoryDetail(null)}
+        />
+      )}
     </main>
+  );
+}
+
+function InventoryDetailModal({
+  endpoint,
+  type,
+  onClose,
+}: {
+  endpoint: EndpointSnapshot;
+  type: "software" | "processes" | "sbom";
+  onClose: () => void;
+}) {
+  const title = type === "software" ? "Software" : type === "processes" ? "Process" : "SBOM Packages";
+  const hostname = endpoint.hostname || endpoint.tanium_endpoint_id || "Unknown";
+  const processes = processValues(endpoint.processes);
+  const sbomGroups = groupedSbomPackages(endpoint.sbom);
+
+  return (
+    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+      <section className="inventory-modal" role="dialog" aria-modal="true" aria-label={`${hostname} ${title}`} onClick={(event) => event.stopPropagation()}>
+        <header>
+          <div>
+            <h2>{title}</h2>
+            <p>{hostname}</p>
+          </div>
+          <button type="button" onClick={onClose}>Close</button>
+        </header>
+        <div className="inventory-modal-body">
+          {type === "software" && (
+            <details open>
+              <summary>Installed Software ({itemCount(endpoint.software)})</summary>
+              <div className="detail-table software-detail-table">
+                <span>Name</span>
+                <span>Version</span>
+                {asRecordList(endpoint.software).map((item, index) => (
+                  <div key={`software-detail-${index}`} className="detail-row">
+                    <strong>{displayField(item, ["name"])}</strong>
+                    <span>{displayField(item, ["version"])}</span>
+                  </div>
+                ))}
+              </div>
+              {!itemCount(endpoint.software) && <p className="muted">수집된 설치 프로그램 없음</p>}
+            </details>
+          )}
+          {type === "processes" && (
+            <details open>
+              <summary>Running Processes ({processes.length})</summary>
+              <div className="detail-list">
+                {processes.map((process, index) => (
+                  <p key={`process-detail-${index}`}>{process}</p>
+                ))}
+              </div>
+              {!processes.length && <p className="muted">프로세스 센서 결과 없음</p>}
+            </details>
+          )}
+          {type === "sbom" && (
+            <>
+              {Object.entries(sbomGroups).map(([group, items]) => (
+                <details key={group} open>
+                  <summary>{group} ({items.length})</summary>
+                  <div className="detail-table sbom-detail-table">
+                    <span>Type</span>
+                    <span>Name</span>
+                    <span>Version</span>
+                    {items.map((item, index) => (
+                      <div key={`sbom-detail-${group}-${index}`} className="detail-row">
+                        <strong>{displayField(item, ["type", "Type"])}</strong>
+                        <span>{displayField(item, ["name", "Name"])}</span>
+                        <span>{displayField(item, ["version", "Version"])}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              ))}
+              {!itemCount(endpoint.sbom) && <p className="muted">SBOM Package 정보 없음</p>}
+            </>
+          )}
+        </div>
+      </section>
+    </div>
   );
 }
 

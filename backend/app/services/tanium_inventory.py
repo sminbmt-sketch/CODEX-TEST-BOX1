@@ -88,9 +88,27 @@ def _process_rows(node: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
-def _sbom_findings(node: dict[str, Any]) -> list[dict[str, Any]]:
-    findings = (node.get("compliance") or {}).get("cveFindings") or []
-    return [finding for finding in findings if str(finding.get("scanType") or "").lower() == "sbom"]
+def _sbom_packages(node: dict[str, Any]) -> list[dict[str, Any]]:
+    columns = {str(column.get("name") or "").lower(): column.get("values") or [] for column in _sensor_columns(node)}
+    type_values = columns.get("type") or []
+    name_values = columns.get("name") or []
+    version_values = columns.get("version") or []
+    row_count = max(len(type_values), len(name_values), len(version_values))
+    packages: list[dict[str, Any]] = []
+    for index in range(row_count):
+        item_type = type_values[index] if index < len(type_values) else None
+        name = name_values[index] if index < len(name_values) else None
+        version = version_values[index] if index < len(version_values) else None
+        if _is_tanium_empty_or_error(name):
+            continue
+        packages.append(
+            {
+                "type": _clean_value(item_type) or "Unknown",
+                "name": _clean_value(name),
+                "version": _clean_value(version),
+            }
+        )
+    return packages
 
 
 async def sync_endpoint_inventory(db: Session, first: int = 100) -> tuple[int, int]:
@@ -101,7 +119,7 @@ async def sync_endpoint_inventory(db: Session, first: int = 100) -> tuple[int, i
     except Exception:
         process_nodes = {}
     try:
-        sbom_nodes = _endpoint_map(await client.get_endpoint_sbom_findings(first=first))
+        sbom_nodes = _endpoint_map(await client.get_endpoint_sbom_package_readings(first=first))
     except Exception:
         sbom_nodes = {}
     nodes = _endpoint_nodes(data)
@@ -132,7 +150,7 @@ async def sync_endpoint_inventory(db: Session, first: int = 100) -> tuple[int, i
         endpoint.software = _clean_records(node.get("installedApplications"), required_key="name")
         endpoint.services = _clean_records(node.get("services"), required_key="name")
         endpoint.processes = _process_rows(process_nodes.get(tanium_id, {}))
-        endpoint.sbom = _sbom_findings(sbom_nodes.get(tanium_id, {}))
+        endpoint.sbom = _sbom_packages(sbom_nodes.get(tanium_id, {}))
         endpoint.last_seen_at = _parse_time(node.get("eidLastSeen"))
         endpoint.raw = node
         changed += 1

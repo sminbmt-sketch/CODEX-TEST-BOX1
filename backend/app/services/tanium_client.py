@@ -136,28 +136,22 @@ class TaniumGatewayClient:
             {"first": first, "sensorName": sensor_name},
         )
 
-    async def get_endpoint_sbom_findings(self, first: int = 50) -> dict[str, Any]:
+    async def get_endpoint_sbom_package_readings(self, first: int = 50, sensor_name: str = "SBOM Packages") -> dict[str, Any]:
         first = max(1, min(first, 500))
         return await self.execute_read_only(
             """
-            query SecureWatchEndpointSbomFindings($first: Int!) {
+            query SecureWatchEndpointSbomPackages($first: Int!, $sensorName: String!) {
               endpoints(first: $first) {
                 edges {
                   node {
                     id
-                    compliance {
-                      cveFindings {
-                        cveId
-                        detectedProducts
-                        cpes
-                        severity
-                        severityV3
-                        cvssScore
-                        cvssScoreV3
-                        scanType
-                        firstFound
-                        lastFound
-                        remediation
+                    sensorReadings(sensors: [{ name: $sensorName, columns: ["Type", "Name", "Version"] }]) {
+                      columns {
+                        name
+                        sensor {
+                          name
+                        }
+                        values
                       }
                     }
                   }
@@ -165,5 +159,5 @@ class TaniumGatewayClient:
               }
             }
             """,
-            {"first": first},
+            {"first": first, "sensorName": sensor_name},
         )
