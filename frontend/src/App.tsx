@@ -212,6 +212,102 @@ function SummaryStatusBadge({ status }: { status?: string | null }) {
   return <span className="pill neutral">No LLM</span>;
 }
 
+function asPlainRecord(value: unknown): Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function asStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : [];
+}
+
+function investigationResults(run?: InvestigationRun) {
+  return asPlainRecord(run?.results);
+}
+
+function investigationPlan(run?: InvestigationRun) {
+  return asPlainRecord(investigationResults(run).investigation_plan);
+}
+
+function investigationCounts(run?: InvestigationRun) {
+  const counts = asPlainRecord(investigationResults(run).summary_counts);
+  return {
+    confirmed: Number(counts.confirmed || 0),
+    potential: Number(counts.potential || 0),
+    environment_candidate: Number(counts.environment_candidate || 0),
+    not_affected: Number(counts.not_affected || 0),
+    total_endpoints: Number(counts.total_endpoints || 0),
+  };
+}
+
+function investigationBucket(run: InvestigationRun | undefined, key: "confirmed" | "potential" | "environment_candidates" | "not_affected") {
+  return asRecordList(investigationResults(run)[key]);
+}
+
+function evidenceSummary(item: Record<string, unknown>) {
+  const evidence = asRecordList(item.evidence);
+  if (!evidence.length) return "-";
+  return evidence
+    .slice(0, 3)
+    .map((entry) => {
+      const scope = String(entry.scope || "evidence");
+      const product = entry.product ? String(entry.product) : "";
+      const installed = entry.installed_name ? String(entry.installed_name) : "";
+      const version = entry.installed_version ? ` ${String(entry.installed_version)}` : "";
+      const keyword = entry.keyword ? String(entry.keyword) : "";
+      const status = entry.version_status ? ` · ${String(entry.version_status)}` : "";
+      return [scope, product || keyword, installed ? `(${installed}${version})` : "", status].filter(Boolean).join(" ");
+    })
+    .join(" / ");
+}
+
+function endpointValue(item: Record<string, unknown>, key: string) {
+  const endpoint = asPlainRecord(item.endpoint);
+  return endpoint[key] != null ? String(endpoint[key]) : "-";
+}
+
+function classificationLabel(key: string) {
+  if (key === "confirmed") return "확정 영향";
+  if (key === "potential") return "추가 확인";
+  if (key === "environment_candidates") return "환경 후보";
+  if (key === "not_affected") return "영향 없음";
+  return key;
+}
+
+function classificationPill(key: string) {
+  if (key === "confirmed") return "pill critical";
+  if (key === "potential") return "pill high";
+  if (key === "environment_candidates") return "pill neutral";
+  return "pill ok";
+}
+
+function InvestigationAssessmentList({ title, bucketKey, rows }: { title: string; bucketKey: string; rows: Record<string, unknown>[] }) {
+  return (
+    <article className="assessment-section">
+      <header>
+        <h4>{title}</h4>
+        <span className={classificationPill(bucketKey)}>{rows.length}</span>
+      </header>
+      <div className="assessment-table">
+        <div className="assessment-row header">
+          <span>Host</span>
+          <span>IP</span>
+          <span>OS</span>
+          <span>근거</span>
+        </div>
+        {rows.slice(0, 20).map((item, index) => (
+          <div key={`${bucketKey}-${endpointValue(item, "id")}-${index}`} className="assessment-row">
+            <strong>{endpointValue(item, "hostname")}</strong>
+            <span>{endpointValue(item, "ip_address")}</span>
+            <span>{endpointValue(item, "os")}</span>
+            <span>{evidenceSummary(item)}</span>
+          </div>
+        ))}
+        {!rows.length && <div className="empty block">해당 결과 없음</div>}
+      </div>
+    </article>
+  );
+}
+
 function summaryErrorLabel(error?: string | null) {
   if (error === "json_parse_failed") return "JSON 파싱 실패";
   if (error === "missing_cve_id") return "CVE ID 누락";
@@ -1117,23 +1213,56 @@ export default function App() {
               </article>
 
               {investigationResult && (
-                <article className="page-card">
+                <article className="page-card investigation-result-card">
                   <header>
                     <div>
-                      <h3>최근 조사 결과</h3>
+                      <h3>조사 결과</h3>
                       <p>{investigationResult.source_title}</p>
                     </div>
                     <span className="pill ok">{investigationResult.status}</span>
                   </header>
-                  <div className="body">
-                    <article className="post">
-                      <h4>요약</h4>
-                      <p>{investigationResult.summary || "조사 결과 요약 없음"}</p>
-                      <h4>Query Plan</h4>
-                      <pre className="json-panel compact">{JSON.stringify(investigationResult.query_plan || {}, null, 2)}</pre>
-                      <h4>Results</h4>
-                      <pre className="json-panel compact">{JSON.stringify(investigationResult.results || {}, null, 2)}</pre>
+                  <div className="investigation-result-body">
+                    <div className="investigation-summary-strip">
+                      {[
+                        ["confirmed", "확정 영향", investigationCounts(investigationResult).confirmed],
+                        ["potential", "추가 확인", investigationCounts(investigationResult).potential],
+                        ["environment_candidates", "환경 후보", investigationCounts(investigationResult).environment_candidate],
+                        ["not_affected", "영향 없음", investigationCounts(investigationResult).not_affected],
+                      ].map(([key, label, value]) => (
+                        <div key={String(key)} className="result-metric">
+                          <span className={classificationPill(String(key))}>{label}</span>
+                          <strong>{String(value)}</strong>
+                        </div>
+                      ))}
+                    </div>
+
+                    <article className="investigation-plan">
+                      <div>
+                        <h4>영향 제품 / 버전 조건</h4>
+                        <p>{investigationResult.summary || "조사 결과 요약 없음"}</p>
+                      </div>
+                      <div className="affected-product-list">
+                        {asRecordList(investigationPlan(investigationResult).affected_products).slice(0, 8).map((product, index) => (
+                          <div key={`${String(product.name)}-${index}`} className="affected-product">
+                            <strong>{String(product.name || "-")}</strong>
+                            <span>{String(product.platform || "unknown")} · before {asStringList(product.affected_versions).join(", ") || "-"}</span>
+                          </div>
+                        ))}
+                        {!asRecordList(investigationPlan(investigationResult).affected_products).length && <div className="empty block">영향 제품 정보 없음</div>}
+                      </div>
                     </article>
+
+                    <div className="assessment-grid">
+                      <InvestigationAssessmentList title={classificationLabel("confirmed")} bucketKey="confirmed" rows={investigationBucket(investigationResult, "confirmed")} />
+                      <InvestigationAssessmentList title={classificationLabel("potential")} bucketKey="potential" rows={investigationBucket(investigationResult, "potential")} />
+                      <InvestigationAssessmentList title={classificationLabel("environment_candidates")} bucketKey="environment_candidates" rows={investigationBucket(investigationResult, "environment_candidates")} />
+                      <InvestigationAssessmentList title={classificationLabel("not_affected")} bucketKey="not_affected" rows={investigationBucket(investigationResult, "not_affected")} />
+                    </div>
+
+                    <details className="investigation-raw">
+                      <summary>조사 원본 JSON</summary>
+                      <pre className="json-panel compact">{JSON.stringify(investigationResult.results || {}, null, 2)}</pre>
+                    </details>
                   </div>
                 </article>
               )}

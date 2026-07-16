@@ -1001,6 +1001,152 @@ button:disabled {
   font-weight: 780;
 }
 
+.investigation-result-card {
+  grid-column: 1 / -1;
+}
+
+.investigation-result-body {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.investigation-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.result-metric {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #263240;
+  border-radius: 7px;
+  background: #101821;
+  padding: 12px;
+}
+
+.result-metric strong {
+  color: #edf5fa;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.investigation-plan {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.45fr) minmax(0, 1fr);
+  gap: 14px;
+  border: 1px solid #263240;
+  border-radius: 7px;
+  background: #101821;
+  padding: 14px;
+}
+
+.investigation-plan h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.investigation-plan p {
+  color: #aab6c4;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.affected-product-list {
+  display: grid;
+  gap: 8px;
+}
+
+.affected-product {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.45fr) minmax(0, 1fr);
+  gap: 10px;
+  border-bottom: 1px solid #202c38;
+  padding-bottom: 8px;
+}
+
+.affected-product:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.affected-product strong {
+  color: #edf5fa;
+  font-size: 13px;
+}
+
+.affected-product span {
+  color: #9aa7b5;
+  font-size: 12px;
+}
+
+.assessment-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.assessment-section {
+  overflow: hidden;
+  border: 1px solid #263240;
+  border-radius: 7px;
+  background: #101821;
+}
+
+.page-card .assessment-section header {
+  align-items: center;
+  border-bottom: 1px solid #263240;
+  flex-direction: row;
+  padding: 12px;
+}
+
+.assessment-section h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.assessment-table {
+  display: grid;
+  max-height: 320px;
+  overflow: auto;
+  scrollbar-color: #3d5267 #101821;
+  scrollbar-width: thin;
+}
+
+.assessment-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.9fr) 120px minmax(130px, 0.8fr) minmax(220px, 1.4fr);
+  gap: 10px;
+  border-bottom: 1px solid #202c38;
+  padding: 10px 12px;
+  color: #b9c7d6;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.assessment-row.header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #121b25;
+  color: #8f9dab;
+  font-weight: 820;
+}
+
+.assessment-row strong {
+  color: #edf5fa;
+}
+
+.investigation-raw summary {
+  color: #8de2f3;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 780;
+  margin-bottom: 8px;
+}
+
 .json-panel {
   background: #0b1118;
   border: 1px solid #253140;
@@ -1286,6 +1432,8 @@ button:disabled {
 
   .dashboard-grid,
   .investigation-layout,
+  .investigation-plan,
+  .assessment-grid,
   .list-toolbar,
   .page-grid,
   .source-settings-grid,
@@ -1327,11 +1475,14 @@ button:disabled {
   }
 
   .cve-row,
+  .assessment-row,
+  .affected-product,
   .inventory-row {
     grid-template-columns: 1fr;
   }
 
   .cve-row.header,
+  .assessment-row.header,
   .inventory-row.header {
     display: none;
   }

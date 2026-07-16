@@ -24,6 +24,7 @@ PRODUCT_BEFORE_VERSION_RE = re.compile(
     re.IGNORECASE,
 )
 OS_KEYWORDS = ("Windows", "macOS", "Mac OS", "Linux", "Ubuntu", "Debian", "Android", "iOS", "ChromeOS")
+GENERIC_SOFTWARE_TERMS = {"windows", "linux", "android", "ios", "macos", "mac os", "meeting", "remote", "client", "plugin", "sdk"}
 STOPWORDS = {
     "security",
     "vulnerability",
@@ -119,6 +120,7 @@ TANIUM_CAPABILITIES = {
         ],
         "query_inputs": {
             "software": "installedApplications.name/version에서 부분 일치 검색",
+            "version": "installedApplications.version을 affected_products.affected_versions와 비교",
             "processes": "Running Processes sensor values에서 부분 일치 검색",
             "os": "os.name/generation/platform에서 부분 일치 검색",
             "ip": "endpoint ipAddress에서 부분 일치 검색",
@@ -199,6 +201,11 @@ def _extract_affected_products(text: str) -> list[dict[str, Any]]:
                     platform = "macOS" if os_name.lower() == "mac os" else os_name
                     break
             products.append({"name": name, "platform": platform, "affected_versions": versions})
+    known_platforms = _unique([str(product["platform"]) for product in products if product.get("platform") and product.get("platform") != "unknown"])
+    if len(known_platforms) == 1:
+        for product in products:
+            if product.get("platform") == "unknown":
+                product["platform"] = known_platforms[0]
     return products[:30]
 
 
@@ -207,13 +214,14 @@ def _software_from_affected_products(products: list[dict[str, Any]]) -> list[str
     os_values = {value.lower() for value in OS_KEYWORDS}
     for product in products:
         name = str(product.get("name") or "")
-        if not name or name.lower() in os_values or name.lower().startswith("for "):
+        lowered = name.lower()
+        if not name or lowered in os_values or lowered in GENERIC_SOFTWARE_TERMS or lowered.startswith("for "):
             continue
         names.append(name)
         normalized = re.sub(r"\s+for\s+(Windows|Linux|macOS|Mac OS|Android|iOS)\b", "", name, flags=re.IGNORECASE).strip()
-        if normalized and normalized != name and normalized.lower() not in os_values:
+        if normalized and normalized != name and normalized.lower() not in os_values and normalized.lower() not in GENERIC_SOFTWARE_TERMS:
             names.append(normalized)
-        if "zoom" in name.lower():
+        if _normalize_product(name).startswith("zoom workplace"):
             names.append("Zoom")
     return _unique(names)
 
@@ -408,6 +416,7 @@ def _keyword_groups(payload: dict[str, Any]) -> dict[str, list[str]]:
     return {
         "software": _unique([str(value) for value in [*list_values("software"), *affected_names] if value]),
         "versions": _unique([str(value) for value in [*list_values("versions"), *affected_versions] if value]),
+        "affected_products": affected_products,
         "processes": _unique([str(value) for value in [*list_values("processes"), *ioc.get("file", [])] if value]),
         "os": _unique([str(value) for value in list_values("os") if value]),
         "cve": _unique([str(value).upper() for value in list_values("cve") if value]),
@@ -419,6 +428,120 @@ def _keyword_groups(payload: dict[str, Any]) -> dict[str, list[str]]:
 
 def _contains(text: str, keyword: str) -> bool:
     return keyword.lower() in text.lower()
+
+
+def _clean_version(value: str | None) -> str | None:
+    if not value:
+        return None
+    match = VERSION_RE.search(str(value))
+    return match.group(0) if match else None
+
+
+def _version_tuple(value: str | None) -> tuple[int, ...] | None:
+    cleaned = _clean_version(value)
+    if not cleaned:
+        return None
+    return tuple(int(part) for part in cleaned.split("."))
+
+
+def _same_version_branch(installed: tuple[int, ...], threshold: tuple[int, ...]) -> bool:
+    if len(installed) < 2 or len(threshold) < 2:
+        return True
+    if len(threshold) >= 3 and threshold[1] == 0 and threshold[2] == 0:
+        return True
+    return installed[:2] == threshold[:2]
+
+
+def _version_status(installed_version: str | None, affected_versions: list[str]) -> str:
+    installed = _version_tuple(installed_version)
+    thresholds = [_version_tuple(value) for value in affected_versions]
+    thresholds = [value for value in thresholds if value is not None]
+    if installed is None:
+        return "version_unknown"
+    if not thresholds:
+        return "no_version_rule"
+
+    comparable = [threshold for threshold in thresholds if _same_version_branch(installed, threshold)]
+    if not comparable:
+        comparable = thresholds
+    if any(installed < threshold for threshold in comparable):
+        return "affected_version"
+    return "safe_version"
+
+
+def _normalize_product(value: str) -> str:
+    text = re.sub(r"\([^)]*\)", " ", value)
+    text = re.sub(r"\b(?:for|on)\s+(?:windows|linux|macos|mac os|android|ios)\b", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b(?:desktop|client|application|app|software)\b", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"[^a-z0-9+.#]+", " ", text.lower())
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _product_terms(product_name: str) -> list[str]:
+    normalized = _normalize_product(product_name)
+    terms = [normalized] if normalized else []
+    if normalized.startswith("zoom workplace"):
+        terms.append("zoom workplace")
+        terms.append("zoom")
+    elif normalized == "zoom":
+        terms.append("zoom")
+    return _unique([term for term in terms if len(term) >= 3 and term not in GENERIC_SOFTWARE_TERMS])
+
+
+def _product_matches(installed_name: str, product_name: str) -> bool:
+    installed = _normalize_product(installed_name)
+    if not installed:
+        return False
+    return any(term and term in installed for term in _product_terms(product_name))
+
+
+def _endpoint_platform_text(endpoint: EndpointSnapshot) -> str:
+    return " ".join(value for value in (endpoint.os_name, endpoint.os_version, endpoint.platform) if value)
+
+
+def _platform_matches(endpoint: EndpointSnapshot, platform: str | None) -> bool:
+    if not platform or platform == "unknown":
+        return True
+    endpoint_text = _endpoint_platform_text(endpoint).lower()
+    normalized = platform.lower()
+    if normalized == "mac os":
+        normalized = "macos"
+    if normalized == "macos":
+        return "mac" in endpoint_text
+    return normalized in endpoint_text
+
+
+def _endpoint_summary(endpoint: EndpointSnapshot) -> dict[str, Any]:
+    return {
+        "id": endpoint.id,
+        "hostname": endpoint.hostname,
+        "ip_address": endpoint.ip_address,
+        "os": " ".join(value for value in (endpoint.os_name, endpoint.os_version) if value),
+        "platform": endpoint.platform,
+    }
+
+
+def _software_records(endpoint: EndpointSnapshot) -> list[dict[str, str]]:
+    records: list[dict[str, str]] = []
+    for item in endpoint.software or []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        records.append({"name": name, "version": str(item.get("version") or "").strip()})
+    return records
+
+
+def _process_values(endpoint: EndpointSnapshot) -> list[str]:
+    values: list[str] = []
+    for item in endpoint.processes or []:
+        if not isinstance(item, dict):
+            continue
+        for value in item.get("values", []) or []:
+            if value:
+                values.append(str(value))
+    return _unique(values)
 
 
 def _endpoint_text(endpoint: EndpointSnapshot) -> dict[str, str]:
@@ -434,34 +557,140 @@ def _endpoint_text(endpoint: EndpointSnapshot) -> dict[str, str]:
     }
 
 
+def _assessment_rank(classification: str) -> int:
+    return {"confirmed": 4, "potential": 3, "environment_candidate": 2, "not_affected": 1}.get(classification, 0)
+
+
+def _make_assessment(
+    endpoint: EndpointSnapshot,
+    classification: str,
+    reason: str,
+    evidence: list[dict[str, Any]],
+    affected_products: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "classification": classification,
+        "reason": reason,
+        "endpoint": _endpoint_summary(endpoint),
+        "evidence": evidence[:30],
+        "affected_products": affected_products[:20],
+        "confidence": {
+            "confirmed": 0.9,
+            "potential": 0.65,
+            "environment_candidate": 0.35,
+            "not_affected": 0.15,
+        }.get(classification, 0.2),
+    }
+
+
+def _assess_endpoint(endpoint: EndpointSnapshot, groups: dict[str, list[Any]]) -> dict[str, Any] | None:
+    affected_products = [item for item in groups.get("affected_products", []) if isinstance(item, dict)]
+    product_matches: list[dict[str, Any]] = []
+    not_affected: list[dict[str, Any]] = []
+
+    for app in _software_records(endpoint):
+        for product in affected_products:
+            product_name = str(product.get("name") or "")
+            if not product_name or not _product_matches(app["name"], product_name):
+                continue
+            platform = str(product.get("platform") or "unknown")
+            versions = [str(value) for value in product.get("affected_versions", []) or [] if value]
+            platform_ok = _platform_matches(endpoint, platform)
+            version_status = _version_status(app["version"], versions)
+            evidence = {
+                "scope": "software",
+                "product": product_name,
+                "installed_name": app["name"],
+                "installed_version": app["version"] or None,
+                "affected_versions": versions,
+                "platform": platform,
+                "platform_match": platform_ok,
+                "version_status": version_status,
+            }
+            if platform_ok and version_status == "affected_version":
+                product_matches.append({**evidence, "classification": "confirmed"})
+            elif platform_ok and version_status in {"version_unknown", "no_version_rule"}:
+                product_matches.append({**evidence, "classification": "potential"})
+            else:
+                not_affected.append({**evidence, "classification": "not_affected"})
+
+    process_evidence: list[dict[str, Any]] = []
+    process_text = " ".join(_process_values(endpoint)).lower()
+    for keyword in groups.get("processes", []):
+        if keyword and str(keyword).lower() in process_text:
+            process_evidence.append({"scope": "process", "keyword": str(keyword)})
+
+    os_evidence: list[dict[str, Any]] = []
+    os_text = _endpoint_platform_text(endpoint).lower()
+    for keyword in groups.get("os", []):
+        if keyword and str(keyword).lower() in os_text:
+            os_evidence.append({"scope": "os", "keyword": str(keyword)})
+
+    ip_evidence: list[dict[str, Any]] = []
+    for keyword in groups.get("ip", []):
+        if keyword and _contains(endpoint.ip_address or "", str(keyword)):
+            ip_evidence.append({"scope": "ip", "keyword": str(keyword)})
+
+    if any(item["classification"] == "confirmed" for item in product_matches):
+        return _make_assessment(endpoint, "confirmed", "affected_product_version_match", product_matches, affected_products)
+    if product_matches or process_evidence or ip_evidence:
+        return _make_assessment(endpoint, "potential", "product_or_process_match_requires_review", [*product_matches, *process_evidence, *ip_evidence], affected_products)
+    if not_affected:
+        return _make_assessment(endpoint, "not_affected", "product_found_but_version_or_platform_not_affected", not_affected, affected_products)
+    if os_evidence:
+        return _make_assessment(endpoint, "environment_candidate", "platform_only_match", os_evidence, affected_products)
+    return None
+
+
 def run_inventory_investigation(db: Session, intelligence: NewsIntelligence) -> InvestigationRun:
     payload = intelligence.intelligence if isinstance(intelligence.intelligence, dict) else {}
     groups = _keyword_groups(payload)
     endpoints = db.scalars(select(EndpointSnapshot).order_by(EndpointSnapshot.hostname.asc().nullslast())).all()
-    matches: list[dict[str, Any]] = []
+    buckets: dict[str, list[dict[str, Any]]] = {
+        "confirmed": [],
+        "potential": [],
+        "environment_candidate": [],
+        "not_affected": [],
+    }
+
     for endpoint in endpoints:
-        texts = _endpoint_text(endpoint)
-        evidence: list[dict[str, str]] = []
-        for scope in ("software", "processes", "os", "ip"):
-            for keyword in groups[scope]:
-                if _contains(texts[scope], keyword):
-                    evidence.append({"scope": scope, "keyword": keyword})
-        if evidence:
-            matches.append(
-                {
-                    "endpoint": {
-                        "id": endpoint.id,
-                        "hostname": endpoint.hostname,
-                        "ip_address": endpoint.ip_address,
-                        "os": " ".join(value for value in (endpoint.os_name, endpoint.os_version) if value),
-                        "platform": endpoint.platform,
-                    },
-                    "evidence": evidence[:20],
-                    "confidence": min(0.95, 0.45 + len(evidence) * 0.1),
-                }
-            )
+        assessment = _assess_endpoint(endpoint, groups)
+        if assessment:
+            buckets[assessment["classification"]].append(assessment)
+
+    matches = [*buckets["confirmed"], *buckets["potential"]]
+    candidates = buckets["environment_candidate"]
+    not_affected = buckets["not_affected"]
+    counts = {
+        "confirmed": len(buckets["confirmed"]),
+        "potential": len(buckets["potential"]),
+        "environment_candidate": len(candidates),
+        "not_affected": len(not_affected),
+        "total_endpoints": len(endpoints),
+    }
+    investigation_plan = {
+        "affected_products": groups["affected_products"],
+        "software_queries": groups["software"],
+        "version_rules": groups["versions"],
+        "platform_queries": groups["os"],
+        "process_queries": groups["processes"],
+        "cves": groups["cve"],
+        "decision_model": {
+            "confirmed": "제품명 매칭 + 플랫폼 일치 + 설치 버전이 영향 버전 조건에 해당",
+            "potential": "제품/프로세스/IP 근거는 있으나 버전 정보가 없거나 판정 불가",
+            "environment_candidate": "제품 근거 없이 OS/플랫폼만 일치",
+            "not_affected": "제품은 발견됐지만 플랫폼 불일치 또는 안전 버전",
+        },
+    }
     result = {
+        "summary_counts": counts,
+        "investigation_plan": investigation_plan,
+        "confirmed": buckets["confirmed"][:200],
+        "potential": buckets["potential"][:200],
+        "environment_candidates": candidates[:200],
+        "not_affected": not_affected[:200],
         "matched_endpoint_count": len(matches),
+        "candidate_endpoint_count": len(candidates),
         "matches": matches[:200],
         "unmatched_indicators": {
             "domain": groups["domain"],
@@ -471,7 +700,10 @@ def run_inventory_investigation(db: Session, intelligence: NewsIntelligence) -> 
         "affected_versions": groups["versions"],
         "capabilities": TANIUM_CAPABILITIES,
     }
-    summary = f"{len(matches)}개 단말에서 software/process/os/ip 기준 조사 키워드가 매칭되었습니다."
+    summary = (
+        f"확정 {counts['confirmed']}대, 추가 확인 {counts['potential']}대, "
+        f"환경 후보 {counts['environment_candidate']}대, 영향 없음 {counts['not_affected']}대로 분류되었습니다."
+    )
     run = InvestigationRun(
         intelligence_id=intelligence.id,
         source_type=intelligence.source_type,
