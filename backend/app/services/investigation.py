@@ -18,6 +18,12 @@ IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 DOMAIN_RE = re.compile(r"\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b", re.IGNORECASE)
 HASH_RE = re.compile(r"\b[a-f0-9]{32,64}\b", re.IGNORECASE)
 PROCESS_RE = re.compile(r"\b[a-z0-9_.-]+\.(?:exe|dll|ps1|sh|bat|cmd|jar|py)\b", re.IGNORECASE)
+VERSION_RE = re.compile(r"\b\d+(?:\.\d+){1,4}\b")
+PRODUCT_BEFORE_VERSION_RE = re.compile(
+    r"([A-Z][A-Za-z0-9+()./' -]{2,120})\s+before\s+(?:versions?\s+)?([0-9][0-9A-Za-z./-]*(?:\s*,\s*[0-9][0-9A-Za-z./-]*)*(?:\s*,?\s*and\s*[0-9][0-9A-Za-z./-]*)?)",
+    re.IGNORECASE,
+)
+OS_KEYWORDS = ("Windows", "macOS", "Mac OS", "Linux", "Ubuntu", "Debian", "Android", "iOS", "ChromeOS")
 STOPWORDS = {
     "security",
     "vulnerability",
@@ -73,6 +79,8 @@ NEWS_INTELLIGENCE_SCHEMA = {
     },
     "investigation_keywords": {
         "software": ["product/vendor/application names to search in installedApplications"],
+        "versions": ["affected version strings explicitly stated in the source"],
+        "affected_products": [{"name": "product name", "platform": "Windows|Linux|macOS|unknown", "affected_versions": ["version strings"]}],
         "processes": ["process names or executable/script names to search in Running Processes sensor values"],
         "os": ["operating system/platform keywords"],
         "cve": ["CVE IDs for correlation and reporting"],
@@ -139,6 +147,77 @@ def _tokens(text: str) -> list[str]:
     return _unique([value for value in values if value.lower() not in STOPWORDS])[:20]
 
 
+def _clean_product_name(value: str) -> str:
+    text = re.sub(r"\s+", " ", value).strip(" .,:;()[]")
+    text = re.sub(r"^(?:the|and|or|a|an)\s+", "", text, flags=re.IGNORECASE)
+    prefixes = [
+        "the flaw affects ",
+        "flaw affects ",
+        "affecting ",
+        "affects ",
+        "in ",
+    ]
+    lowered = text.lower()
+    for prefix in prefixes:
+        if prefix in lowered:
+            index = lowered.rfind(prefix)
+            text = text[index + len(prefix) :].strip(" .,:;()[]")
+            lowered = text.lower()
+    return text
+
+
+def _version_values(value: str) -> list[str]:
+    return _unique(VERSION_RE.findall(value))
+
+
+def _split_product_candidates(value: str) -> list[str]:
+    text = _clean_product_name(value)
+    parts = re.split(r"\s*,\s*|\s+ and \s+|\s+ or \s+", text)
+    cleaned = [_clean_product_name(part) for part in parts]
+    os_values = {value.lower() for value in OS_KEYWORDS}
+    return _unique(
+        [
+            part
+            for part in cleaned
+            if len(part) > 2
+            and not part.lower().startswith(("version", "versions", "for "))
+            and part.lower() not in os_values
+        ]
+    )
+
+
+def _extract_affected_products(text: str) -> list[dict[str, Any]]:
+    products: list[dict[str, Any]] = []
+    for match in PRODUCT_BEFORE_VERSION_RE.finditer(text):
+        versions = _version_values(match.group(2))
+        if not versions:
+            continue
+        for name in _split_product_candidates(match.group(1)):
+            platform = "unknown"
+            for os_name in OS_KEYWORDS:
+                if os_name.lower() in name.lower():
+                    platform = "macOS" if os_name.lower() == "mac os" else os_name
+                    break
+            products.append({"name": name, "platform": platform, "affected_versions": versions})
+    return products[:30]
+
+
+def _software_from_affected_products(products: list[dict[str, Any]]) -> list[str]:
+    names: list[str] = []
+    os_values = {value.lower() for value in OS_KEYWORDS}
+    for product in products:
+        name = str(product.get("name") or "")
+        if not name or name.lower() in os_values or name.lower().startswith("for "):
+            continue
+        names.append(name)
+        normalized = re.sub(r"\s+for\s+(Windows|Linux|macOS|Mac OS|Android|iOS)\b", "", name, flags=re.IGNORECASE).strip()
+        if normalized and normalized != name and normalized.lower() not in os_values:
+            names.append(normalized)
+        if "zoom" in name.lower():
+            names.append("Zoom")
+    return _unique(names)
+
+
 def _source_payload(db: Session, source_type: str, item_id: int) -> tuple[str, str, str | None, Article | Vulnerability]:
     if source_type == "news":
         article = db.get(Article, item_id)
@@ -192,7 +271,20 @@ def _rules_intelligence(source_type: str, title: str, body: str, source_url: str
     text = f"{title}\n{body}"
     files = _unique(PROCESS_RE.findall(text))
     cves = _unique([value.upper() for value in CVE_RE.findall(text)])
-    software = _tokens(text) if source_type == "cve" else []
+    affected_products = _extract_affected_products(text)
+    software = _software_from_affected_products(affected_products)
+    if source_type == "cve":
+        software = _unique([*software, *_tokens(text)])
+    versions = _unique([version for product in affected_products for version in product.get("affected_versions", [])])
+    os_values = _unique(
+        [
+            str(product.get("platform"))
+            for product in affected_products
+            if product.get("platform") and product.get("platform") != "unknown"
+        ]
+    )
+    if not os_values and source_type == "cve":
+        os_values = _unique([os_name for os_name in OS_KEYWORDS if re.search(rf"\b{re.escape(os_name)}\b", text, re.IGNORECASE)])
     return {
         "content": {
             "source_type": source_type,
@@ -204,8 +296,10 @@ def _rules_intelligence(source_type: str, title: str, body: str, source_url: str
         },
         "investigation_keywords": {
             "software": software,
+            "versions": versions,
+            "affected_products": affected_products,
             "processes": files,
-            "os": [],
+            "os": os_values,
             "cve": cves,
             "ioc": {
                 "ip": _unique(IP_RE.findall(text)),
@@ -298,11 +392,25 @@ def _keyword_groups(payload: dict[str, Any]) -> dict[str, list[str]]:
     if not isinstance(keywords, dict):
         keywords = {}
     ioc = keywords.get("ioc") if isinstance(keywords.get("ioc"), dict) else {}
+    def list_values(key: str) -> list[Any]:
+        value = keywords.get(key)
+        return value if isinstance(value, list) else []
+
+    affected_products = keywords.get("affected_products") if isinstance(keywords.get("affected_products"), list) else []
+    affected_names = [str(item.get("name")) for item in affected_products if isinstance(item, dict) and item.get("name")]
+    affected_versions = [
+        str(version)
+        for item in affected_products
+        if isinstance(item, dict)
+        for version in (item.get("affected_versions") or [])
+        if version
+    ]
     return {
-        "software": _unique([str(value) for value in keywords.get("software", []) if value]),
-        "processes": _unique([str(value) for value in [*keywords.get("processes", []), *ioc.get("file", [])] if value]),
-        "os": _unique([str(value) for value in keywords.get("os", []) if value]),
-        "cve": _unique([str(value).upper() for value in keywords.get("cve", []) if value]),
+        "software": _unique([str(value) for value in [*list_values("software"), *affected_names] if value]),
+        "versions": _unique([str(value) for value in [*list_values("versions"), *affected_versions] if value]),
+        "processes": _unique([str(value) for value in [*list_values("processes"), *ioc.get("file", [])] if value]),
+        "os": _unique([str(value) for value in list_values("os") if value]),
+        "cve": _unique([str(value).upper() for value in list_values("cve") if value]),
         "ip": _unique([str(value) for value in ioc.get("ip", []) if value]),
         "domain": _unique([str(value) for value in ioc.get("domain", []) if value]),
         "hash": _unique([str(value) for value in ioc.get("hash", []) if value]),
@@ -360,6 +468,7 @@ def run_inventory_investigation(db: Session, intelligence: NewsIntelligence) -> 
             "hash": groups["hash"],
             "cve": groups["cve"],
         },
+        "affected_versions": groups["versions"],
         "capabilities": TANIUM_CAPABILITIES,
     }
     summary = f"{len(matches)}개 단말에서 software/process/os/ip 기준 조사 키워드가 매칭되었습니다."
