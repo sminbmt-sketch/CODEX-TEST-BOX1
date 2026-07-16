@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import re
+from html.parser import HTMLParser
 from typing import Any
 
+import httpx
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
@@ -31,11 +33,45 @@ STOPWORDS = {
     "execution",
 }
 
-TANIUM_CAPABILITIES = {
-    "mode": "read_only_inventory_investigation",
-    "allowed_scopes": ["software", "processes", "operating_system", "hostname", "ip_address"],
-    "blocked_actions": ["mutation", "process_kill", "file_delete", "package_deploy", "endpoint_control"],
-    "input_schema": {
+class _ArticleTextParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self._skip_depth = 0
+        self._chunks: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"script", "style", "noscript", "svg", "nav", "footer"}:
+            self._skip_depth += 1
+        if tag in {"p", "br", "div", "article", "section", "li", "h1", "h2", "h3"}:
+            self._chunks.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style", "noscript", "svg", "nav", "footer"} and self._skip_depth:
+            self._skip_depth -= 1
+        if tag in {"p", "div", "article", "section", "li", "h1", "h2", "h3"}:
+            self._chunks.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth:
+            return
+        text = re.sub(r"\s+", " ", data).strip()
+        if text:
+            self._chunks.append(text)
+
+    def text(self) -> str:
+        return re.sub(r"\n{3,}", "\n\n", "\n".join(self._chunks)).strip()
+
+
+NEWS_INTELLIGENCE_SCHEMA = {
+    "content": {
+        "source_type": "news|cve",
+        "title": "원문 제목",
+        "risk": "low|medium|high|critical|unknown",
+        "summary": "한국어 조사 요약",
+        "source_url": "원문 URL",
+        "source_fetch": "fetched_url|fallback_local",
+    },
+    "investigation_keywords": {
         "software": ["product/vendor/application names to search in installedApplications"],
         "processes": ["process names or executable/script names to search in Running Processes sensor values"],
         "os": ["operating system/platform keywords"],
@@ -47,7 +83,41 @@ TANIUM_CAPABILITIES = {
             "file": ["File indicators; compared with process/software names when possible"],
         },
     },
-    "execution_policy": "LLM may propose query keywords. Backend validates and executes only local Tanium inventory matching.",
+    "recommended_actions": ["조사자가 확인해야 하는 대응 방향"],
+}
+
+TANIUM_CAPABILITIES = {
+    "mode": "read_only_tanium_investigation",
+    "principle": "News Intelligence JSON은 조사 키워드 추출용 정의이고, Tanium 조사는 백엔드가 허용한 read-only API만 실행합니다.",
+    "news_intelligence_schema": NEWS_INTELLIGENCE_SCHEMA,
+    "tanium_api_definition": {
+        "gateway": "Tanium Gateway GraphQL",
+        "allowed_operations": [
+            {
+                "name": "Endpoint Inventory",
+                "purpose": "Host Name, IP, OS, Platform, 설치 소프트웨어 목록 조회",
+                "method": "query",
+                "graphql_operation": "SecureWatchEndpointInventory",
+                "fields": ["endpoints.id", "endpoints.name", "ipAddress", "os", "installedApplications", "services"],
+            },
+            {
+                "name": "Running Processes Sensor",
+                "purpose": "단말별 실행 프로세스 센서 결과 조회",
+                "method": "query",
+                "graphql_operation": "SecureWatchEndpointProcessReadings",
+                "sensor": "Running Processes",
+                "fields": ["endpoints.id", "sensorReadings.columns.name", "sensorReadings.columns.values"],
+            },
+        ],
+        "query_inputs": {
+            "software": "installedApplications.name/version에서 부분 일치 검색",
+            "processes": "Running Processes sensor values에서 부분 일치 검색",
+            "os": "os.name/generation/platform에서 부분 일치 검색",
+            "ip": "endpoint ipAddress에서 부분 일치 검색",
+        },
+        "blocked_operations": ["mutation", "process_kill", "file_delete", "package_deploy", "endpoint_control"],
+    },
+    "execution_policy": "LLM은 조사 후보 키워드만 제안합니다. Tanium API 실행은 backend allowlist와 read-only query로 제한됩니다.",
 }
 
 
@@ -95,6 +165,29 @@ def _source_payload(db: Session, source_type: str, item_id: int) -> tuple[str, s
     return title, body, vulnerability.source_url, vulnerability
 
 
+async def _fetch_source_text(source_url: str | None) -> tuple[str | None, str | None]:
+    if not source_url or not source_url.startswith(("http://", "https://")):
+        return None, "missing_source_url"
+    headers = {"User-Agent": "SecureWatch/0.1 (+security-investigation)"}
+    try:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True, headers=headers) as client:
+            response = await client.get(source_url)
+            response.raise_for_status()
+    except Exception as exc:
+        return None, f"source_fetch_failed: {sanitize_llm_error(exc)}"
+    content_type = response.headers.get("content-type", "")
+    if "html" not in content_type and "<html" not in response.text[:500].lower():
+        text = response.text
+    else:
+        parser = _ArticleTextParser()
+        parser.feed(response.text)
+        text = parser.text()
+    text = re.sub(r"[ \t]{2,}", " ", text).strip()
+    if len(text) < 120:
+        return None, "source_fetch_too_short"
+    return text[:12000], None
+
+
 def _rules_intelligence(source_type: str, title: str, body: str, source_url: str | None) -> dict[str, Any]:
     text = f"{title}\n{body}"
     files = _unique(PROCESS_RE.findall(text))
@@ -107,6 +200,7 @@ def _rules_intelligence(source_type: str, title: str, body: str, source_url: str
             "risk": "unknown",
             "summary": body[:600],
             "source_url": source_url,
+            "source_fetch": "fallback_local",
         },
         "investigation_keywords": {
             "software": software,
@@ -148,28 +242,41 @@ async def build_intelligence(db: Session, source_type: str, item_id: int, refres
     if existing is not None and not refresh:
         return existing
 
-    title, body, source_url, source = _source_payload(db, source_type, item_id)
+    title, local_body, source_url, source = _source_payload(db, source_type, item_id)
+    fetched_body, fetch_error = await _fetch_source_text(source_url)
+    body = fetched_body or local_body
     payload = _rules_intelligence(source_type, title, body, source_url)
+    payload["content"]["source_fetch"] = "fetched_url" if fetched_body else "fallback_local"
     method = "rules"
-    error = None
+    error = fetch_error
     llm_config = resolve_llm_config(db)
     if llm_config.provider != "disabled":
+        schema = json.dumps(NEWS_INTELLIGENCE_SCHEMA, ensure_ascii=False)
         prompt = (
-            "Return valid JSON only. Extract endpoint investigation keywords for Tanium inventory matching. "
-            "Use this exact structure: {\"content\":{\"source_type\":\"news|cve\",\"title\":\"\",\"risk\":\"low|medium|high|critical|unknown\",\"summary\":\"Korean summary\",\"source_url\":\"\"},"
-            "\"investigation_keywords\":{\"software\":[],\"processes\":[],\"os\":[],\"cve\":[],\"ioc\":{\"ip\":[],\"domain\":[],\"hash\":[],\"file\":[]}},"
-            "\"recommended_actions\":[]}."
-            "Do not invent indicators. Focus on software, process, OS, CVE, file, domain, IP, hash useful for endpoint investigation.\n\n"
-            f"Title: {title}\nSource URL: {source_url or ''}\nBody:\n{body[:6000]}"
+            "Return valid JSON only. This is not a summary rewrite task. "
+            "Analyze the source URL content again and extract endpoint investigation data for Tanium. "
+            "Use the exact JSON structure below and keep values compact enough for the configured max_tokens. "
+            "Do not invent indicators. Include only software, process, OS, CVE, file, domain, IP, and hash values that are useful for endpoint investigation. "
+            "If source text does not contain endpoint-investigation evidence, use empty arrays.\n\n"
+            f"Configured max_tokens: {llm_config.max_tokens}\n"
+            f"Required JSON schema: {schema}\n\n"
+            f"Source type: {source_type}\nTitle: {title}\nSource URL: {source_url or ''}\n"
+            f"Source fetch status: {'fetched_url' if fetched_body else 'fallback_local'}\n"
+            f"Source text:\n{body[:9000]}"
         )
         try:
             raw = await SummaryService(llm_config).summarize("Tanium investigation keyword extraction", prompt, [source_url] if source_url else [], source_type="news")
             parsed = _extract_json(raw)
             if parsed and isinstance(parsed.get("investigation_keywords"), dict):
                 payload = parsed
+                payload.setdefault("content", {})
+                if isinstance(payload["content"], dict):
+                    payload["content"].setdefault("source_url", source_url)
+                    payload["content"]["source_fetch"] = "fetched_url" if fetched_body else "fallback_local"
                 method = "llm"
         except Exception as exc:
-            error = sanitize_llm_error(exc)
+            llm_error = sanitize_llm_error(exc)
+            error = f"{fetch_error}; {llm_error}" if fetch_error else llm_error
 
     row = existing or NewsIntelligence(source_type=source_type)
     row.article_id = source.id if source_type == "news" else None

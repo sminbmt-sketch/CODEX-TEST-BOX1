@@ -624,6 +624,11 @@ export default function App() {
   const visibleCveIds = state.vulnerabilities.map((item) => item.id);
   const visibleArticleIds = state.articles.map((item) => item.id);
   const dashboardCves = (state.summary?.top_risks || []).slice(0, 10);
+  const investigationItems = investigationTarget.sourceType === "news" ? state.articles : state.vulnerabilities;
+  const selectedInvestigationTitle =
+    investigationTarget.sourceType === "news"
+      ? state.articles.find((item) => item.id === investigationTarget.itemId)?.title
+      : state.vulnerabilities.find((item) => item.id === investigationTarget.itemId)?.cve_id;
 
   return (
     <main className="ops-app">
@@ -1013,69 +1018,102 @@ export default function App() {
 
         {route === "investigation" && (
           <section>
-            <PageTitle title="Investigation" description="Security News 및 CVE를 선택해 단말 조사 키워드를 추출하고 Tanium Inventory 기준으로 영향 단말을 확인합니다." badge={`${state.investigationRuns.length} runs`} />
-            <div className="page-grid">
-              <article className="page-card">
+            <PageTitle title="Investigation" description="원문 링크를 다시 분석해 조사 키워드를 추출하고, Tanium read-only API 기준으로 영향 단말을 확인합니다." badge={`${state.investigationRuns.length} runs`} />
+            <div className="investigation-layout">
+              <article className="page-card investigation-target-card">
                 <header>
                   <div>
                     <h3>조사 대상 선택</h3>
-                    <p>LLM 또는 규칙 기반으로 News Intelligence를 생성한 뒤 Tanium 조사에 사용합니다.</p>
+                    <p>대상 유형을 선택한 뒤 아래 목록에서 조사할 항목을 고릅니다.</p>
                   </div>
-                  <span className="pill neutral">{investigationTarget.sourceType.toUpperCase()}</span>
+                  <span className="pill neutral">{selectedInvestigationTitle || "미선택"}</span>
                 </header>
-                <div className="settings-form investigation-form">
-                  <label>
-                    대상 유형
-                    <select
-                      value={investigationTarget.sourceType}
-                      onChange={(event) => setInvestigationTarget({ sourceType: event.target.value as "news" | "cve", itemId: "" })}
-                    >
-                      <option value="news">Security News</option>
-                      <option value="cve">CVE</option>
-                    </select>
-                  </label>
-                  <label>
-                    항목
-                    <select
-                      value={investigationTarget.itemId}
-                      onChange={(event) => setInvestigationTarget((current) => ({ ...current, itemId: event.target.value ? Number(event.target.value) : "" }))}
-                    >
-                      <option value="">선택</option>
-                      {investigationTarget.sourceType === "news"
-                        ? state.articles.map((article) => (
-                            <option key={article.id} value={article.id}>
-                              {article.title}
-                            </option>
-                          ))
-                        : state.vulnerabilities.map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {item.cve_id} {item.title || ""}
-                            </option>
-                          ))}
-                    </select>
-                  </label>
-                  <div className="settings-actions">
-                    <button type="button" onClick={() => void createSelectedIntelligence()} disabled={Boolean(state.action) || !investigationTarget.itemId}>
-                      <FileText size={16} />
-                      <span>Intelligence 생성</span>
-                    </button>
-                    <button type="button" onClick={() => void runSelectedInvestigation()} disabled={Boolean(state.action) || !investigationTarget.itemId}>
-                      <Radar size={16} />
-                      <span>조사 실행</span>
-                    </button>
+                <div className="investigation-tabs segmented">
+                  <button
+                    type="button"
+                    className={investigationTarget.sourceType === "news" ? "active" : undefined}
+                    onClick={() => setInvestigationTarget({ sourceType: "news", itemId: "" })}
+                  >
+                    Security News
+                  </button>
+                  <button
+                    type="button"
+                    className={investigationTarget.sourceType === "cve" ? "active" : undefined}
+                    onClick={() => setInvestigationTarget({ sourceType: "cve", itemId: "" })}
+                  >
+                    CVE
+                  </button>
+                </div>
+                <div className="investigation-list" role="list">
+                  {investigationItems.map((item) => {
+                    const isNews = investigationTarget.sourceType === "news";
+                    const article = isNews ? (item as Article) : undefined;
+                    const cve = !isNews ? (item as Vulnerability) : undefined;
+                    const title = article?.title || cve?.cve_id || "Untitled";
+                    const subtitle = article
+                      ? `${article.source?.name || "Security News"} · ${formatDate(article.published_at)}`
+                      : `${cve?.cvss_severity || "N/A"} · ${formatDate(cve?.published_at)}`;
+                    const summary = article ? articleDisplay(article).summary : vulnerabilitySummary(cve as Vulnerability);
+                    return (
+                      <button
+                        key={`${investigationTarget.sourceType}-${item.id}`}
+                        type="button"
+                        className={investigationTarget.itemId === item.id ? "investigation-item selected" : "investigation-item"}
+                        onClick={() => setInvestigationTarget((current) => ({ ...current, itemId: item.id }))}
+                      >
+                        <span className="investigation-item-title">{title}</span>
+                        <span className="investigation-item-meta">{subtitle}</span>
+                        <span className="investigation-item-summary">{summary}</span>
+                      </button>
+                    );
+                  })}
+                  {!investigationItems.length && <div className="empty block">조사 대상 데이터가 없습니다.</div>}
+                </div>
+                <div className="investigation-actions">
+                  <div>
+                    <strong>{selectedInvestigationTitle || "조사 대상을 선택하세요"}</strong>
+                    <span>Intelligence 생성 시 원문 링크 본문을 다시 가져와 분석합니다.</span>
                   </div>
+                  <button type="button" onClick={() => void createSelectedIntelligence()} disabled={Boolean(state.action) || !investigationTarget.itemId}>
+                    <FileText size={16} />
+                    <span>Intelligence 생성</span>
+                  </button>
+                  <button type="button" onClick={() => void runSelectedInvestigation()} disabled={Boolean(state.action) || !investigationTarget.itemId}>
+                    <Radar size={16} />
+                    <span>조사 실행</span>
+                  </button>
                 </div>
               </article>
 
               <article className="page-card">
                 <header>
                   <div>
-                    <h3>Tanium 조사 기능</h3>
-                    <p>LLM은 이 기능 정의를 참고해 조사 키워드를 생성하고, 백엔드가 read-only inventory 매칭만 실행합니다.</p>
+                    <h3>Tanium API 정의</h3>
+                    <p>실시간 조사는 아래 read-only API allowlist 기준으로 실행됩니다.</p>
                   </div>
                   <span className="pill neutral">Read-only</span>
                 </header>
-                <pre className="json-panel">{JSON.stringify(state.investigationCapabilities || {}, null, 2)}</pre>
+                <div className="api-definition">
+                  <div>
+                    <label>Gateway</label>
+                    <strong>{String((state.investigationCapabilities?.tanium_api_definition as { gateway?: unknown } | undefined)?.gateway || "Tanium Gateway GraphQL")}</strong>
+                  </div>
+                  {(((state.investigationCapabilities?.tanium_api_definition as { allowed_operations?: unknown[] } | undefined)?.allowed_operations || []) as Record<string, unknown>[]).map((operation) => (
+                    <article key={String(operation.name)} className="api-operation">
+                      <h4>{String(operation.name)}</h4>
+                      <p>{String(operation.purpose)}</p>
+                      <span>{String(operation.method).toUpperCase()} · {String(operation.graphql_operation)}</span>
+                    </article>
+                  ))}
+                  <details>
+                    <summary>News Intelligence JSON 정의</summary>
+                    <pre className="json-panel compact">{JSON.stringify((state.investigationCapabilities || {}).news_intelligence_schema || {}, null, 2)}</pre>
+                  </details>
+                  <details>
+                    <summary>전체 Tanium API 정의</summary>
+                    <pre className="json-panel compact">{JSON.stringify((state.investigationCapabilities || {}).tanium_api_definition || {}, null, 2)}</pre>
+                  </details>
+                </div>
               </article>
 
               {investigationResult && (

@@ -859,8 +859,146 @@ button:disabled {
   gap: 14px;
 }
 
+.investigation-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.65fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.investigation-target-card {
+  min-height: 620px;
+}
+
+.investigation-tabs {
+  margin: 14px;
+}
+
 .investigation-form {
   align-items: end;
+}
+
+.investigation-list {
+  display: grid;
+  gap: 10px;
+  max-height: 520px;
+  overflow: auto;
+  padding: 0 14px 14px;
+  scrollbar-color: #3d5267 #101821;
+  scrollbar-width: thin;
+}
+
+.investigation-item {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  min-height: 0;
+  border: 1px solid #263240;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  background: #101821;
+  color: #dce7f0;
+  padding: 12px;
+  text-align: left;
+}
+
+.investigation-item:hover,
+.investigation-item.selected {
+  border-color: #365263;
+  border-left-color: #1aa3b8;
+  background: #10202b;
+}
+
+.investigation-item-title {
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.investigation-item-meta {
+  color: #8f9dab;
+  font-size: 12px;
+}
+
+.investigation-item-summary {
+  color: #b9c7d6;
+  display: -webkit-box;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.investigation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid #263240;
+  padding: 14px;
+}
+
+.investigation-actions div {
+  display: grid;
+  gap: 4px;
+  min-width: 240px;
+  margin-right: auto;
+}
+
+.investigation-actions strong {
+  color: #edf5fa;
+  font-size: 13px;
+}
+
+.investigation-actions span {
+  color: #8f9dab;
+  font-size: 12px;
+}
+
+.api-definition {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.api-definition label {
+  display: block;
+  color: #8f9dab;
+  font-size: 11px;
+  font-weight: 820;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.api-definition strong {
+  color: #edf5fa;
+}
+
+.api-operation {
+  border: 1px solid #263240;
+  border-radius: 7px;
+  background: #101821;
+  padding: 12px;
+}
+
+.api-operation h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.api-operation p {
+  color: #aab6c4;
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.api-operation span,
+.api-definition summary {
+  color: #8de2f3;
+  font-size: 12px;
+  font-weight: 780;
 }
 
 .json-panel {
@@ -1147,6 +1285,7 @@ button:disabled {
   }
 
   .dashboard-grid,
+  .investigation-layout,
   .list-toolbar,
   .page-grid,
   .source-settings-grid,
