@@ -811,11 +811,6 @@ button:disabled {
   grid-template-columns: minmax(220px, 1fr) minmax(120px, 0.35fr);
 }
 
-.sbom-detail-table,
-.sbom-detail-table .detail-row {
-  grid-template-columns: minmax(120px, 0.35fr) minmax(240px, 1fr) minmax(140px, 0.45fr);
-}
-
 .detail-row {
   border-top: 1px solid #202c38;
   display: grid;

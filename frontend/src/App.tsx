@@ -140,15 +140,6 @@ function processValues(value: unknown) {
   });
 }
 
-function groupedSbomPackages(value: unknown) {
-  return asRecordList(value).reduce<Record<string, Record<string, unknown>[]>>((groups, item) => {
-    const type = displayField(item, ["type", "Type"]);
-    const key = type === "-" ? "Unknown" : type;
-    groups[key] = [...(groups[key] || []), item];
-    return groups;
-  }, {});
-}
-
 function vulnerabilitySummary(item: Vulnerability) {
   return item.summary || item.description || "수집된 원문 링크와 CVE 메타데이터 확인이 필요합니다.";
 }
@@ -291,7 +282,7 @@ export default function App() {
   });
   const [llmMessage, setLlmMessage] = useState<string | undefined>();
   const [llmModels, setLlmModels] = useState<string[]>([]);
-  const [inventoryDetail, setInventoryDetail] = useState<{ endpoint: EndpointSnapshot; type: "software" | "processes" | "sbom" } | null>(null);
+  const [inventoryDetail, setInventoryDetail] = useState<{ endpoint: EndpointSnapshot; type: "software" | "processes" } | null>(null);
 
   async function load() {
     setState((current) => ({ ...current, loading: true, error: undefined }));
@@ -939,7 +930,7 @@ export default function App() {
 
         {route === "tanium-inventory" && (
           <section>
-            <PageTitle title="Tanium Inventory" description="Tanium API로 수집한 단말, 설치 프로그램, 실행 프로세스, SBOM Package 정보를 제공합니다." badge={`${state.summary?.endpoint_count ?? state.inventory.length} endpoints`} tone="ok" />
+            <PageTitle title="Tanium Inventory" description="Tanium API로 수집한 단말, 설치 프로그램, 실행 프로세스 정보를 제공합니다." badge={`${state.summary?.endpoint_count ?? state.inventory.length} endpoints`} tone="ok" />
             <article className="page-card">
               <header>
                 <div>
@@ -968,7 +959,6 @@ export default function App() {
                       <span className="inventory-counts">
                         <button type="button" onClick={() => setInventoryDetail({ endpoint, type: "software" })}>Software {itemCount(endpoint.software)}</button>
                         <button type="button" onClick={() => setInventoryDetail({ endpoint, type: "processes" })}>Process {processValues(endpoint.processes).length}</button>
-                        <button type="button" onClick={() => setInventoryDetail({ endpoint, type: "sbom" })}>SBOM {itemCount(endpoint.sbom)}</button>
                       </span>
                     </div>
                   </article>
@@ -1586,13 +1576,12 @@ function InventoryDetailModal({
   onClose,
 }: {
   endpoint: EndpointSnapshot;
-  type: "software" | "processes" | "sbom";
+  type: "software" | "processes";
   onClose: () => void;
 }) {
-  const title = type === "software" ? "Software" : type === "processes" ? "Process" : "SBOM Packages";
+  const title = type === "software" ? "Software" : "Process";
   const hostname = endpoint.hostname || endpoint.tanium_endpoint_id || "Unknown";
   const processes = processValues(endpoint.processes);
-  const sbomGroups = groupedSbomPackages(endpoint.sbom);
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
@@ -1631,28 +1620,6 @@ function InventoryDetailModal({
               </div>
               {!processes.length && <p className="muted">프로세스 센서 결과 없음</p>}
             </details>
-          )}
-          {type === "sbom" && (
-            <>
-              {Object.entries(sbomGroups).map(([group, items]) => (
-                <details key={group} open>
-                  <summary>{group} ({items.length})</summary>
-                  <div className="detail-table sbom-detail-table">
-                    <span>Type</span>
-                    <span>Name</span>
-                    <span>Version</span>
-                    {items.map((item, index) => (
-                      <div key={`sbom-detail-${group}-${index}`} className="detail-row">
-                        <strong>{displayField(item, ["type", "Type"])}</strong>
-                        <span>{displayField(item, ["name", "Name"])}</span>
-                        <span>{displayField(item, ["version", "Version"])}</span>
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              ))}
-              {!itemCount(endpoint.sbom) && <p className="muted">SBOM Package 정보 없음</p>}
-            </>
           )}
         </div>
       </section>
