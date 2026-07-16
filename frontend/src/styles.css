@@ -859,6 +859,55 @@ button:disabled {
   gap: 14px;
 }
 
+.investigation-form {
+  align-items: end;
+}
+
+.json-panel {
+  background: #0b1118;
+  border: 1px solid #253140;
+  border-radius: 7px;
+  color: #b9c7d6;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+  max-height: 420px;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.json-panel.compact {
+  max-height: 260px;
+}
+
+.intel-list {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.intel-list details {
+  background: #101821;
+  border: 1px solid #263240;
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.intel-list summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 820;
+  padding: 12px;
+}
+
+.intel-list p {
+  color: #aab6c4;
+  margin: 0;
+  padding: 0 12px 12px;
+}
+
 .source-list {
   display: grid;
   gap: 10px;

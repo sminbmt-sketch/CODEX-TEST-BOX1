@@ -236,6 +236,40 @@ export type SummaryLogItem = {
   summary_preview?: string | null;
 };
 
+export type IntelligenceItem = {
+  id: number;
+  source_type: "news" | "cve";
+  article_id?: number | null;
+  vulnerability_id?: number | null;
+  title: string;
+  source_url?: string | null;
+  status: string;
+  intelligence?: unknown;
+  extraction_method: string;
+  error?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type InvestigationRun = {
+  id: number;
+  intelligence_id: number;
+  source_type: "news" | "cve";
+  source_title: string;
+  status: string;
+  query_plan?: unknown;
+  results?: unknown;
+  summary?: string | null;
+  error?: string | null;
+  created_at?: string | null;
+};
+
+export type InvestigationRequest = {
+  source_type: "news" | "cve";
+  item_id: number;
+  refresh_intelligence?: boolean;
+};
+
 type ListParams = {
   limit?: number;
   offset?: number;
@@ -367,4 +401,11 @@ export const api = {
     request<CollectionJobStatus>(`/api/collect/epss/job${epssCollectionQuery(params ?? { mode: "missing" })}`, { method: "POST" }),
   epssStatus: () => request<CollectionJobStatus>("/api/collect/epss/status"),
   collectNews: (params?: NewsCollectionParams) => request(`/api/collect/news${newsCollectionQuery(params)}`, { method: "POST" }),
+  investigationCapabilities: () => request<Record<string, unknown>>("/api/investigations/tanium-capabilities"),
+  intelligence: () => request<IntelligenceItem[]>("/api/investigations/intelligence?limit=100"),
+  createIntelligence: (payload: InvestigationRequest) =>
+    request<IntelligenceItem>("/api/investigations/intelligence", { method: "POST", body: JSON.stringify(payload) }),
+  runInvestigation: (payload: InvestigationRequest) =>
+    request<InvestigationRun>("/api/investigations/run", { method: "POST", body: JSON.stringify(payload) }),
+  investigationRuns: () => request<InvestigationRun[]>("/api/investigations/runs?limit=50"),
 };

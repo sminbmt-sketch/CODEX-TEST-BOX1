@@ -148,6 +148,44 @@ class ImpactAnalysisResult(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class IntelligenceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    source_type: str
+    article_id: int | None = None
+    vulnerability_id: int | None = None
+    title: str
+    source_url: str | None = None
+    status: str
+    intelligence: dict | list | None = None
+    extraction_method: str
+    error: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class InvestigationRequest(BaseModel):
+    source_type: Literal["news", "cve"]
+    item_id: int
+    refresh_intelligence: bool = False
+
+
+class InvestigationRunOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    intelligence_id: int
+    source_type: str
+    source_title: str
+    status: str
+    query_plan: dict | list | None = None
+    results: dict | list | None = None
+    summary: str | None = None
+    error: str | None = None
+    created_at: datetime | None = None
+
+
 class SummaryRunResult(BaseModel):
     target: str
     fetched: int = 0

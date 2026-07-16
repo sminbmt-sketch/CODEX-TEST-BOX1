@@ -1,8 +1,8 @@
 import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useMemo, useState } from "react";
 import { CalendarClock, DatabaseZap, ExternalLink, FileText, Mail, Plus, Radar, RefreshCw, Search, Server, Trash2, Wifi } from "lucide-react";
-import { api, type Article, type AutomationSettings, type CollectionJobStatus, type DashboardSummary, type DataResetTarget, type Detection, type EmailSettings, type EndpointSnapshot, type LlmProvider, type LlmSettings, type Source, type SummaryLogItem, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
+import { api, type Article, type AutomationSettings, type CollectionJobStatus, type DashboardSummary, type DataResetTarget, type Detection, type EmailSettings, type EndpointSnapshot, type IntelligenceItem, type InvestigationRun, type LlmProvider, type LlmSettings, type Source, type SummaryLogItem, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
 
-type Route = "dashboard" | "cves" | "security-news" | "tanium-inventory" | "reports" | "logs" | "settings";
+type Route = "dashboard" | "cves" | "security-news" | "tanium-inventory" | "investigation" | "reports" | "logs" | "settings";
 
 type LoadState = {
   summary?: DashboardSummary;
@@ -12,6 +12,9 @@ type LoadState = {
   articleTotal: number;
   inventory: EndpointSnapshot[];
   detections: Detection[];
+  intelligence: IntelligenceItem[];
+  investigationRuns: InvestigationRun[];
+  investigationCapabilities?: Record<string, unknown>;
   trends?: TrendReport;
   summaryLogs: SummaryLogItem[];
   tanium?: TaniumStatus;
@@ -33,6 +36,8 @@ const emptyState: LoadState = {
   articleTotal: 0,
   inventory: [],
   detections: [],
+  intelligence: [],
+  investigationRuns: [],
   sources: [],
   summaryLogs: [],
   loading: true,
@@ -43,6 +48,7 @@ const navItems: { route: Route; label: string }[] = [
   { route: "cves", label: "CVE" },
   { route: "security-news", label: "Security News" },
   { route: "tanium-inventory", label: "Tanium Inventory" },
+  { route: "investigation", label: "Investigation" },
   { route: "reports", label: "Reports" },
   { route: "logs", label: "Logs" },
   { route: "settings", label: "Settings" },
@@ -60,7 +66,7 @@ const llmDefaults: Record<LlmProvider, { baseUrl: string; model: string }> = {
 
 function routeFromHash(): Route {
   const value = window.location.hash.replace(/^#\/?/, "");
-  if (value === "cves" || value === "security-news" || value === "tanium-inventory" || value === "reports" || value === "logs" || value === "settings") {
+  if (value === "cves" || value === "security-news" || value === "tanium-inventory" || value === "investigation" || value === "reports" || value === "logs" || value === "settings") {
     return value;
   }
   return "dashboard";
@@ -239,6 +245,8 @@ export default function App() {
   const [newsSummaryMode, setNewsSummaryMode] = useState(false);
   const [selectedCveIds, setSelectedCveIds] = useState<number[]>([]);
   const [selectedArticleIds, setSelectedArticleIds] = useState<number[]>([]);
+  const [investigationTarget, setInvestigationTarget] = useState<{ sourceType: "news" | "cve"; itemId: number | "" }>({ sourceType: "news", itemId: "" });
+  const [investigationResult, setInvestigationResult] = useState<InvestigationRun | undefined>();
   const [sourceDrafts, setSourceDrafts] = useState<Record<number, { name: string; kind: string; url: string; enabled: boolean }>>({});
   const [newSourceDrafts, setNewSourceDrafts] = useState<Record<"cve" | "news", { name: string; kind: string; url: string; enabled: boolean }>>({
     cve: { name: "", kind: "vulnerability", url: "", enabled: true },
@@ -289,7 +297,7 @@ export default function App() {
     try {
       const cveParams = { limit: cvePageSize, offset: (cvePage - 1) * cvePageSize, q: cveSearch.trim() || undefined, sort: cveSort, severity: cveSeverity || undefined };
       const newsParams = { limit: newsPageSize, offset: (newsPage - 1) * newsPageSize, q: newsSearch.trim() || undefined, sort: newsSort, category: newsCategory };
-      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, automation, email, sources, nvdYearJob, epssJob, summaryLogs] = await Promise.all([
+      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, automation, email, sources, nvdYearJob, epssJob, summaryLogs, intelligence, investigationRuns, investigationCapabilities] = await Promise.all([
         api.summary(),
         api.vulnerabilities(cveParams),
         api.vulnerabilityCount(cveParams),
@@ -306,8 +314,11 @@ export default function App() {
         api.nvdYearStatus(),
         api.epssStatus(),
         api.summaryFailureLogs(),
+        api.intelligence(),
+        api.investigationRuns(),
+        api.investigationCapabilities(),
       ]);
-      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, automation, email, nvdYearJob, epssJob, sources, summaryLogs, loading: false });
+      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, automation, email, nvdYearJob, epssJob, sources, summaryLogs, intelligence, investigationRuns, investigationCapabilities, loading: false });
       setSourceDrafts(Object.fromEntries(sources.map((source) => [source.id, { name: source.name, kind: source.kind, url: source.url || "", enabled: source.enabled }])));
       setLlmForm((current) => ({
         ...current,
@@ -470,6 +481,37 @@ export default function App() {
 
   async function runNewsSummariesUpdate() {
     await runAction("News summaries", () => api.summarizeArticles({ days: summaryDays, includeExisting: includeExistingSummaries }));
+  }
+
+  async function createSelectedIntelligence() {
+    if (!investigationTarget.itemId) return;
+    await runAction("News Intelligence", () =>
+      api.createIntelligence({
+        source_type: investigationTarget.sourceType,
+        item_id: Number(investigationTarget.itemId),
+        refresh_intelligence: true,
+      })
+    );
+  }
+
+  async function runSelectedInvestigation() {
+    if (!investigationTarget.itemId) return;
+    setState((current) => ({ ...current, action: "Tanium Investigation", error: undefined }));
+    try {
+      const run = await api.runInvestigation({
+        source_type: investigationTarget.sourceType,
+        item_id: Number(investigationTarget.itemId),
+        refresh_intelligence: false,
+      });
+      setInvestigationResult(run);
+      await load();
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        action: undefined,
+        error: error instanceof Error ? error.message : "Unknown error",
+      }));
+    }
   }
 
   async function runSelectedCveSummaries() {
@@ -966,6 +1008,137 @@ export default function App() {
                 {!state.inventory.length && <div className="empty block">No endpoint inventory</div>}
               </div>
             </article>
+          </section>
+        )}
+
+        {route === "investigation" && (
+          <section>
+            <PageTitle title="Investigation" description="Security News 및 CVE를 선택해 단말 조사 키워드를 추출하고 Tanium Inventory 기준으로 영향 단말을 확인합니다." badge={`${state.investigationRuns.length} runs`} />
+            <div className="page-grid">
+              <article className="page-card">
+                <header>
+                  <div>
+                    <h3>조사 대상 선택</h3>
+                    <p>LLM 또는 규칙 기반으로 News Intelligence를 생성한 뒤 Tanium 조사에 사용합니다.</p>
+                  </div>
+                  <span className="pill neutral">{investigationTarget.sourceType.toUpperCase()}</span>
+                </header>
+                <div className="settings-form investigation-form">
+                  <label>
+                    대상 유형
+                    <select
+                      value={investigationTarget.sourceType}
+                      onChange={(event) => setInvestigationTarget({ sourceType: event.target.value as "news" | "cve", itemId: "" })}
+                    >
+                      <option value="news">Security News</option>
+                      <option value="cve">CVE</option>
+                    </select>
+                  </label>
+                  <label>
+                    항목
+                    <select
+                      value={investigationTarget.itemId}
+                      onChange={(event) => setInvestigationTarget((current) => ({ ...current, itemId: event.target.value ? Number(event.target.value) : "" }))}
+                    >
+                      <option value="">선택</option>
+                      {investigationTarget.sourceType === "news"
+                        ? state.articles.map((article) => (
+                            <option key={article.id} value={article.id}>
+                              {article.title}
+                            </option>
+                          ))
+                        : state.vulnerabilities.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.cve_id} {item.title || ""}
+                            </option>
+                          ))}
+                    </select>
+                  </label>
+                  <div className="settings-actions">
+                    <button type="button" onClick={() => void createSelectedIntelligence()} disabled={Boolean(state.action) || !investigationTarget.itemId}>
+                      <FileText size={16} />
+                      <span>Intelligence 생성</span>
+                    </button>
+                    <button type="button" onClick={() => void runSelectedInvestigation()} disabled={Boolean(state.action) || !investigationTarget.itemId}>
+                      <Radar size={16} />
+                      <span>조사 실행</span>
+                    </button>
+                  </div>
+                </div>
+              </article>
+
+              <article className="page-card">
+                <header>
+                  <div>
+                    <h3>Tanium 조사 기능</h3>
+                    <p>LLM은 이 기능 정의를 참고해 조사 키워드를 생성하고, 백엔드가 read-only inventory 매칭만 실행합니다.</p>
+                  </div>
+                  <span className="pill neutral">Read-only</span>
+                </header>
+                <pre className="json-panel">{JSON.stringify(state.investigationCapabilities || {}, null, 2)}</pre>
+              </article>
+
+              {investigationResult && (
+                <article className="page-card">
+                  <header>
+                    <div>
+                      <h3>최근 조사 결과</h3>
+                      <p>{investigationResult.source_title}</p>
+                    </div>
+                    <span className="pill ok">{investigationResult.status}</span>
+                  </header>
+                  <div className="body">
+                    <article className="post">
+                      <h4>요약</h4>
+                      <p>{investigationResult.summary || "조사 결과 요약 없음"}</p>
+                      <h4>Query Plan</h4>
+                      <pre className="json-panel compact">{JSON.stringify(investigationResult.query_plan || {}, null, 2)}</pre>
+                      <h4>Results</h4>
+                      <pre className="json-panel compact">{JSON.stringify(investigationResult.results || {}, null, 2)}</pre>
+                    </article>
+                  </div>
+                </article>
+              )}
+
+              <article className="page-card">
+                <header>
+                  <div>
+                    <h3>News Intelligence</h3>
+                    <p>최근 생성된 조사 키워드 JSON입니다.</p>
+                  </div>
+                  <span className="pill neutral">{state.intelligence.length}</span>
+                </header>
+                <div className="intel-list">
+                  {state.intelligence.slice(0, 10).map((item) => (
+                    <details key={item.id}>
+                      <summary>{item.source_type.toUpperCase()} · {item.title}</summary>
+                      <pre className="json-panel compact">{JSON.stringify(item.intelligence || {}, null, 2)}</pre>
+                    </details>
+                  ))}
+                  {!state.intelligence.length && <div className="empty block">No intelligence data</div>}
+                </div>
+              </article>
+
+              <article className="page-card">
+                <header>
+                  <div>
+                    <h3>Investigation Runs</h3>
+                    <p>최근 Tanium 조사 실행 이력입니다.</p>
+                  </div>
+                  <span className="pill neutral">{state.investigationRuns.length}</span>
+                </header>
+                <div className="intel-list">
+                  {state.investigationRuns.slice(0, 10).map((run) => (
+                    <details key={run.id}>
+                      <summary>{formatDate(run.created_at)} · {run.source_title}</summary>
+                      <p>{run.summary}</p>
+                      <pre className="json-panel compact">{JSON.stringify(run.results || {}, null, 2)}</pre>
+                    </details>
+                  ))}
+                  {!state.investigationRuns.length && <div className="empty block">No investigation runs</div>}
+                </div>
+              </article>
+            </div>
           </section>
         )}
 

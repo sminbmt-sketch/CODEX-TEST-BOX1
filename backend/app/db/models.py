@@ -114,6 +114,38 @@ class Detection(Base):
     endpoint: Mapped[EndpointSnapshot] = relationship(back_populates="detections")
 
 
+class NewsIntelligence(Base):
+    __tablename__ = "news_intelligence"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_type: Mapped[str] = mapped_column(String(32), index=True)
+    article_id: Mapped[int | None] = mapped_column(ForeignKey("articles.id"), index=True)
+    vulnerability_id: Mapped[int | None] = mapped_column(ForeignKey("vulnerabilities.id"), index=True)
+    title: Mapped[str] = mapped_column(Text)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(32), default="ready", index=True)
+    intelligence: Mapped[dict | list | None] = mapped_column(JsonType)
+    extraction_method: Mapped[str] = mapped_column(String(32), default="rules")
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class InvestigationRun(Base):
+    __tablename__ = "investigation_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    intelligence_id: Mapped[int] = mapped_column(ForeignKey("news_intelligence.id"), index=True)
+    source_type: Mapped[str] = mapped_column(String(32), index=True)
+    source_title: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(32), default="completed", index=True)
+    query_plan: Mapped[dict | list | None] = mapped_column(JsonType)
+    results: Mapped[dict | list | None] = mapped_column(JsonType)
+    summary: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
