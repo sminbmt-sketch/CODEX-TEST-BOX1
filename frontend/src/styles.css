@@ -861,7 +861,7 @@ button:disabled {
 
 .investigation-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.65fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   align-items: start;
 }
@@ -881,7 +881,7 @@ button:disabled {
 .investigation-list {
   display: grid;
   gap: 10px;
-  max-height: 520px;
+  max-height: 620px;
   overflow: auto;
   padding: 0 14px 14px;
   scrollbar-color: #3d5267 #101821;
@@ -930,6 +930,22 @@ button:disabled {
   -webkit-line-clamp: 2;
 }
 
+.investigation-list-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid #263240;
+  padding: 12px 14px;
+}
+
+.investigation-list-footer span {
+  margin-right: auto;
+  color: #8f9dab;
+  font-size: 12px;
+}
+
 .investigation-actions {
   display: flex;
   flex-wrap: wrap;
@@ -954,51 +970,6 @@ button:disabled {
 .investigation-actions span {
   color: #8f9dab;
   font-size: 12px;
-}
-
-.api-definition {
-  display: grid;
-  gap: 12px;
-  padding: 14px;
-}
-
-.api-definition label {
-  display: block;
-  color: #8f9dab;
-  font-size: 11px;
-  font-weight: 820;
-  margin-bottom: 4px;
-  text-transform: uppercase;
-}
-
-.api-definition strong {
-  color: #edf5fa;
-}
-
-.api-operation {
-  border: 1px solid #263240;
-  border-radius: 7px;
-  background: #101821;
-  padding: 12px;
-}
-
-.api-operation h4 {
-  margin: 0 0 6px;
-  font-size: 14px;
-}
-
-.api-operation p {
-  color: #aab6c4;
-  margin: 0 0 8px;
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.api-operation span,
-.api-definition summary {
-  color: #8de2f3;
-  font-size: 12px;
-  font-weight: 780;
 }
 
 .investigation-result-card {
@@ -1164,32 +1135,6 @@ button:disabled {
 
 .json-panel.compact {
   max-height: 260px;
-}
-
-.intel-list {
-  display: grid;
-  gap: 10px;
-  padding: 14px;
-}
-
-.intel-list details {
-  background: #101821;
-  border: 1px solid #263240;
-  border-radius: 7px;
-  overflow: hidden;
-}
-
-.intel-list summary {
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 820;
-  padding: 12px;
-}
-
-.intel-list p {
-  color: #aab6c4;
-  margin: 0;
-  padding: 0 12px 12px;
 }
 
 .source-list {

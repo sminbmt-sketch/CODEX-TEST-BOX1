@@ -1,6 +1,6 @@
 import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useMemo, useState } from "react";
 import { CalendarClock, DatabaseZap, ExternalLink, FileText, Mail, Plus, Radar, RefreshCw, Search, Server, Trash2, Wifi } from "lucide-react";
-import { api, type Article, type AutomationSettings, type CollectionJobStatus, type DashboardSummary, type DataResetTarget, type Detection, type EmailSettings, type EndpointSnapshot, type IntelligenceItem, type InvestigationRun, type LlmProvider, type LlmSettings, type Source, type SummaryLogItem, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
+import { api, type Article, type AutomationSettings, type CollectionJobStatus, type DashboardSummary, type DataResetTarget, type Detection, type EmailSettings, type EndpointSnapshot, type InvestigationRun, type LlmProvider, type LlmSettings, type Source, type SummaryLogItem, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
 
 type Route = "dashboard" | "cves" | "security-news" | "tanium-inventory" | "investigation" | "reports" | "logs" | "settings";
 
@@ -12,9 +12,6 @@ type LoadState = {
   articleTotal: number;
   inventory: EndpointSnapshot[];
   detections: Detection[];
-  intelligence: IntelligenceItem[];
-  investigationRuns: InvestigationRun[];
-  investigationCapabilities?: Record<string, unknown>;
   trends?: TrendReport;
   summaryLogs: SummaryLogItem[];
   tanium?: TaniumStatus;
@@ -36,8 +33,6 @@ const emptyState: LoadState = {
   articleTotal: 0,
   inventory: [],
   detections: [],
-  intelligence: [],
-  investigationRuns: [],
   sources: [],
   summaryLogs: [],
   loading: true,
@@ -342,6 +337,10 @@ export default function App() {
   const [selectedCveIds, setSelectedCveIds] = useState<number[]>([]);
   const [selectedArticleIds, setSelectedArticleIds] = useState<number[]>([]);
   const [investigationTarget, setInvestigationTarget] = useState<{ sourceType: "news" | "cve"; itemId: number | "" }>({ sourceType: "news", itemId: "" });
+  const [investigationItems, setInvestigationItems] = useState<(Article | Vulnerability)[]>([]);
+  const [investigationTotal, setInvestigationTotal] = useState(0);
+  const [investigationLimit, setInvestigationLimit] = useState(50);
+  const [investigationLoading, setInvestigationLoading] = useState(false);
   const [investigationResult, setInvestigationResult] = useState<InvestigationRun | undefined>();
   const [sourceDrafts, setSourceDrafts] = useState<Record<number, { name: string; kind: string; url: string; enabled: boolean }>>({});
   const [newSourceDrafts, setNewSourceDrafts] = useState<Record<"cve" | "news", { name: string; kind: string; url: string; enabled: boolean }>>({
@@ -393,7 +392,7 @@ export default function App() {
     try {
       const cveParams = { limit: cvePageSize, offset: (cvePage - 1) * cvePageSize, q: cveSearch.trim() || undefined, sort: cveSort, severity: cveSeverity || undefined };
       const newsParams = { limit: newsPageSize, offset: (newsPage - 1) * newsPageSize, q: newsSearch.trim() || undefined, sort: newsSort, category: newsCategory };
-      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, automation, email, sources, nvdYearJob, epssJob, summaryLogs, intelligence, investigationRuns, investigationCapabilities] = await Promise.all([
+      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, automation, email, sources, nvdYearJob, epssJob, summaryLogs] = await Promise.all([
         api.summary(),
         api.vulnerabilities(cveParams),
         api.vulnerabilityCount(cveParams),
@@ -410,11 +409,8 @@ export default function App() {
         api.nvdYearStatus(),
         api.epssStatus(),
         api.summaryFailureLogs(),
-        api.intelligence(),
-        api.investigationRuns(),
-        api.investigationCapabilities(),
       ]);
-      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, automation, email, nvdYearJob, epssJob, sources, summaryLogs, intelligence, investigationRuns, investigationCapabilities, loading: false });
+      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, automation, email, nvdYearJob, epssJob, sources, summaryLogs, loading: false });
       setSourceDrafts(Object.fromEntries(sources.map((source) => [source.id, { name: source.name, kind: source.kind, url: source.url || "", enabled: source.enabled }])));
       setLlmForm((current) => ({
         ...current,
@@ -579,17 +575,6 @@ export default function App() {
     await runAction("News summaries", () => api.summarizeArticles({ days: summaryDays, includeExisting: includeExistingSummaries }));
   }
 
-  async function createSelectedIntelligence() {
-    if (!investigationTarget.itemId) return;
-    await runAction("News Intelligence", () =>
-      api.createIntelligence({
-        source_type: investigationTarget.sourceType,
-        item_id: Number(investigationTarget.itemId),
-        refresh_intelligence: true,
-      })
-    );
-  }
-
   async function runSelectedInvestigation() {
     if (!investigationTarget.itemId) return;
     setState((current) => ({ ...current, action: "Tanium Investigation", error: undefined }));
@@ -597,7 +582,7 @@ export default function App() {
       const run = await api.runInvestigation({
         source_type: investigationTarget.sourceType,
         item_id: Number(investigationTarget.itemId),
-        refresh_intelligence: false,
+        refresh_intelligence: true,
       });
       setInvestigationResult(run);
       await load();
@@ -607,6 +592,28 @@ export default function App() {
         action: undefined,
         error: error instanceof Error ? error.message : "Unknown error",
       }));
+    }
+  }
+
+  async function loadInvestigationTargets(type = investigationTarget.sourceType, limit = investigationLimit) {
+    if (route !== "investigation") return;
+    setInvestigationLoading(true);
+    try {
+      if (type === "news") {
+        const params = { limit, offset: 0, sort: "date" as const, category: "news" as const };
+        const [items, total] = await Promise.all([api.articles(params), api.articleCount(params)]);
+        setInvestigationItems(items);
+        setInvestigationTotal(total);
+      } else {
+        const params = { limit, offset: 0, sort: "date" as const };
+        const [items, total] = await Promise.all([api.vulnerabilities(params), api.vulnerabilityCount(params)]);
+        setInvestigationItems(items);
+        setInvestigationTotal(total);
+      }
+    } catch (error) {
+      setState((current) => ({ ...current, error: error instanceof Error ? error.message : "Unknown error" }));
+    } finally {
+      setInvestigationLoading(false);
     }
   }
 
@@ -676,6 +683,10 @@ export default function App() {
   }, [cvePage, cvePageSize, cveSearch, cveSort, cveSeverity, newsPage, newsPageSize, newsSearch, newsSort, newsCategory]);
 
   useEffect(() => {
+    void loadInvestigationTargets();
+  }, [route, investigationTarget.sourceType, investigationLimit]);
+
+  useEffect(() => {
     setSelectedCveIds([]);
   }, [cvePage, cvePageSize, cveSearch, cveSort, cveSeverity]);
 
@@ -720,11 +731,10 @@ export default function App() {
   const visibleCveIds = state.vulnerabilities.map((item) => item.id);
   const visibleArticleIds = state.articles.map((item) => item.id);
   const dashboardCves = (state.summary?.top_risks || []).slice(0, 10);
-  const investigationItems = investigationTarget.sourceType === "news" ? state.articles : state.vulnerabilities;
   const selectedInvestigationTitle =
     investigationTarget.sourceType === "news"
-      ? state.articles.find((item) => item.id === investigationTarget.itemId)?.title
-      : state.vulnerabilities.find((item) => item.id === investigationTarget.itemId)?.cve_id;
+      ? (investigationItems.find((item) => item.id === investigationTarget.itemId) as Article | undefined)?.title
+      : (investigationItems.find((item) => item.id === investigationTarget.itemId) as Vulnerability | undefined)?.cve_id;
 
   return (
     <main className="ops-app">
@@ -1114,7 +1124,7 @@ export default function App() {
 
         {route === "investigation" && (
           <section>
-            <PageTitle title="Investigation" description="원문 링크를 다시 분석해 조사 키워드를 추출하고, Tanium read-only API 기준으로 영향 단말을 확인합니다." badge={`${state.investigationRuns.length} runs`} />
+            <PageTitle title="Investigation" description="원문 링크를 다시 분석해 조사 키워드를 추출하고, Tanium read-only API 기준으로 영향 단말을 확인합니다." badge={`${investigationItems.length} / ${investigationTotal} loaded`} />
             <div className="investigation-layout">
               <article className="page-card investigation-target-card">
                 <header>
@@ -1128,14 +1138,22 @@ export default function App() {
                   <button
                     type="button"
                     className={investigationTarget.sourceType === "news" ? "active" : undefined}
-                    onClick={() => setInvestigationTarget({ sourceType: "news", itemId: "" })}
+                    onClick={() => {
+                      setInvestigationTarget({ sourceType: "news", itemId: "" });
+                      setInvestigationLimit(50);
+                      setInvestigationResult(undefined);
+                    }}
                   >
                     Security News
                   </button>
                   <button
                     type="button"
                     className={investigationTarget.sourceType === "cve" ? "active" : undefined}
-                    onClick={() => setInvestigationTarget({ sourceType: "cve", itemId: "" })}
+                    onClick={() => {
+                      setInvestigationTarget({ sourceType: "cve", itemId: "" });
+                      setInvestigationLimit(50);
+                      setInvestigationResult(undefined);
+                    }}
                   >
                     CVE
                   </button>
@@ -1155,7 +1173,10 @@ export default function App() {
                         key={`${investigationTarget.sourceType}-${item.id}`}
                         type="button"
                         className={investigationTarget.itemId === item.id ? "investigation-item selected" : "investigation-item"}
-                        onClick={() => setInvestigationTarget((current) => ({ ...current, itemId: item.id }))}
+                        onClick={() => {
+                          setInvestigationTarget((current) => ({ ...current, itemId: item.id }));
+                          setInvestigationResult(undefined);
+                        }}
                       >
                         <span className="investigation-item-title">{title}</span>
                         <span className="investigation-item-meta">{subtitle}</span>
@@ -1163,52 +1184,28 @@ export default function App() {
                       </button>
                     );
                   })}
-                  {!investigationItems.length && <div className="empty block">조사 대상 데이터가 없습니다.</div>}
+                  {investigationLoading && <div className="empty block">조사 대상 목록을 불러오는 중입니다.</div>}
+                  {!investigationLoading && !investigationItems.length && <div className="empty block">조사 대상 데이터가 없습니다.</div>}
+                </div>
+                <div className="investigation-list-footer">
+                  <span>{investigationItems.length}개 표시 / 전체 {investigationTotal}개</span>
+                  <button
+                    type="button"
+                    onClick={() => setInvestigationLimit((value) => value + 50)}
+                    disabled={investigationLoading || investigationItems.length >= investigationTotal}
+                  >
+                    더 불러오기
+                  </button>
                 </div>
                 <div className="investigation-actions">
                   <div>
                     <strong>{selectedInvestigationTitle || "조사 대상을 선택하세요"}</strong>
-                    <span>Intelligence 생성 시 원문 링크 본문을 다시 가져와 분석합니다.</span>
+                    <span>조사 실행 시 원문 링크 본문을 다시 가져와 분석합니다.</span>
                   </div>
-                  <button type="button" onClick={() => void createSelectedIntelligence()} disabled={Boolean(state.action) || !investigationTarget.itemId}>
-                    <FileText size={16} />
-                    <span>Intelligence 생성</span>
-                  </button>
                   <button type="button" onClick={() => void runSelectedInvestigation()} disabled={Boolean(state.action) || !investigationTarget.itemId}>
                     <Radar size={16} />
                     <span>조사 실행</span>
                   </button>
-                </div>
-              </article>
-
-              <article className="page-card">
-                <header>
-                  <div>
-                    <h3>Tanium API 정의</h3>
-                    <p>실시간 조사는 아래 read-only API allowlist 기준으로 실행됩니다.</p>
-                  </div>
-                  <span className="pill neutral">Read-only</span>
-                </header>
-                <div className="api-definition">
-                  <div>
-                    <label>Gateway</label>
-                    <strong>{String((state.investigationCapabilities?.tanium_api_definition as { gateway?: unknown } | undefined)?.gateway || "Tanium Gateway GraphQL")}</strong>
-                  </div>
-                  {(((state.investigationCapabilities?.tanium_api_definition as { allowed_operations?: unknown[] } | undefined)?.allowed_operations || []) as Record<string, unknown>[]).map((operation) => (
-                    <article key={String(operation.name)} className="api-operation">
-                      <h4>{String(operation.name)}</h4>
-                      <p>{String(operation.purpose)}</p>
-                      <span>{String(operation.method).toUpperCase()} · {String(operation.graphql_operation)}</span>
-                    </article>
-                  ))}
-                  <details>
-                    <summary>News Intelligence JSON 정의</summary>
-                    <pre className="json-panel compact">{JSON.stringify((state.investigationCapabilities || {}).news_intelligence_schema || {}, null, 2)}</pre>
-                  </details>
-                  <details>
-                    <summary>전체 Tanium API 정의</summary>
-                    <pre className="json-panel compact">{JSON.stringify((state.investigationCapabilities || {}).tanium_api_definition || {}, null, 2)}</pre>
-                  </details>
                 </div>
               </article>
 
@@ -1266,45 +1263,6 @@ export default function App() {
                   </div>
                 </article>
               )}
-
-              <article className="page-card">
-                <header>
-                  <div>
-                    <h3>News Intelligence</h3>
-                    <p>최근 생성된 조사 키워드 JSON입니다.</p>
-                  </div>
-                  <span className="pill neutral">{state.intelligence.length}</span>
-                </header>
-                <div className="intel-list">
-                  {state.intelligence.slice(0, 10).map((item) => (
-                    <details key={item.id}>
-                      <summary>{item.source_type.toUpperCase()} · {item.title}</summary>
-                      <pre className="json-panel compact">{JSON.stringify(item.intelligence || {}, null, 2)}</pre>
-                    </details>
-                  ))}
-                  {!state.intelligence.length && <div className="empty block">No intelligence data</div>}
-                </div>
-              </article>
-
-              <article className="page-card">
-                <header>
-                  <div>
-                    <h3>Investigation Runs</h3>
-                    <p>최근 Tanium 조사 실행 이력입니다.</p>
-                  </div>
-                  <span className="pill neutral">{state.investigationRuns.length}</span>
-                </header>
-                <div className="intel-list">
-                  {state.investigationRuns.slice(0, 10).map((run) => (
-                    <details key={run.id}>
-                      <summary>{formatDate(run.created_at)} · {run.source_title}</summary>
-                      <p>{run.summary}</p>
-                      <pre className="json-panel compact">{JSON.stringify(run.results || {}, null, 2)}</pre>
-                    </details>
-                  ))}
-                  {!state.investigationRuns.length && <div className="empty block">No investigation runs</div>}
-                </div>
-              </article>
             </div>
           </section>
         )}
