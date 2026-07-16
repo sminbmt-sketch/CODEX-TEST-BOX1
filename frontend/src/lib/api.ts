@@ -83,6 +83,9 @@ export type EndpointSnapshot = {
   os_version?: string | null;
   platform?: string | null;
   software?: unknown;
+  processes?: unknown;
+  services?: unknown;
+  sbom?: unknown;
   last_seen_at?: string | null;
 };
 

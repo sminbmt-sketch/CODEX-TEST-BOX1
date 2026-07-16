@@ -22,6 +22,10 @@ def _endpoint_nodes(data: dict[str, Any]) -> list[dict[str, Any]]:
     return [edge.get("node", {}) for edge in edges if edge.get("node")]
 
 
+def _endpoint_map(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {str(node.get("id")): node for node in _endpoint_nodes(data) if node.get("id") is not None}
+
+
 def _first_value(*values: Any) -> str | None:
     for value in values:
         if value is None:
@@ -42,9 +46,64 @@ def _first_value(*values: Any) -> str | None:
     return None
 
 
+def _is_tanium_empty_or_error(value: Any) -> bool:
+    text = str(value or "").strip().lower()
+    return not text or text in {"[no results]", "no results"} or text.startswith(("tse-error:", "sensor evaluation timed out"))
+
+
+def _clean_value(value: Any) -> str | None:
+    return None if _is_tanium_empty_or_error(value) else str(value).strip()
+
+
+def _clean_records(records: Any, required_key: str = "name") -> list[dict[str, Any]]:
+    if not isinstance(records, list):
+        return []
+    cleaned: list[dict[str, Any]] = []
+    for item in records:
+        if not isinstance(item, dict):
+            continue
+        if _is_tanium_empty_or_error(item.get(required_key)):
+            continue
+        cleaned.append(item)
+    return cleaned
+
+
+def _sensor_columns(node: dict[str, Any]) -> list[dict[str, Any]]:
+    return node.get("sensorReadings", {}).get("columns", []) or []
+
+
+def _process_rows(node: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for column in _sensor_columns(node):
+        values = [value for value in column.get("values") or [] if not _is_tanium_empty_or_error(value)]
+        if not values:
+            continue
+        rows.append(
+            {
+                "sensor": (column.get("sensor") or {}).get("name"),
+                "column": column.get("name"),
+                "values": values[:250],
+            }
+        )
+    return rows
+
+
+def _sbom_findings(node: dict[str, Any]) -> list[dict[str, Any]]:
+    findings = (node.get("compliance") or {}).get("cveFindings") or []
+    return [finding for finding in findings if str(finding.get("scanType") or "").lower() == "sbom"]
+
+
 async def sync_endpoint_inventory(db: Session, first: int = 100) -> tuple[int, int]:
     client = TaniumGatewayClient()
     data = await client.get_endpoint_inventory(first=first)
+    try:
+        process_nodes = _endpoint_map(await client.get_endpoint_process_readings(first=first))
+    except Exception:
+        process_nodes = {}
+    try:
+        sbom_nodes = _endpoint_map(await client.get_endpoint_sbom_findings(first=first))
+    except Exception:
+        sbom_nodes = {}
     nodes = _endpoint_nodes(data)
     changed = 0
 
@@ -65,12 +124,15 @@ async def sync_endpoint_inventory(db: Session, first: int = 100) -> tuple[int, i
             db.add(endpoint)
 
         os_info = node.get("os") or {}
-        endpoint.ip_address = node.get("ipAddress")
+        endpoint.ip_address = _clean_value(node.get("ipAddress"))
         endpoint.mac_address = _first_value(node.get("macAddress"), node.get("macAddresses"), node.get("mac"), node.get("networkAdapters"))
-        endpoint.os_name = os_info.get("name") or os_info.get("generation") or os_info.get("platform")
-        endpoint.os_version = os_info.get("generation")
-        endpoint.platform = os_info.get("platform") or node.get("platform")
-        endpoint.software = node.get("installedApplications") or []
+        endpoint.os_name = _clean_value(os_info.get("name")) or _clean_value(os_info.get("generation")) or _clean_value(os_info.get("platform"))
+        endpoint.os_version = _clean_value(os_info.get("generation"))
+        endpoint.platform = _clean_value(os_info.get("platform")) or _clean_value(node.get("platform"))
+        endpoint.software = _clean_records(node.get("installedApplications"), required_key="name")
+        endpoint.services = _clean_records(node.get("services"), required_key="name")
+        endpoint.processes = _process_rows(process_nodes.get(tanium_id, {}))
+        endpoint.sbom = _sbom_findings(sbom_nodes.get(tanium_id, {}))
         endpoint.last_seen_at = _parse_time(node.get("eidLastSeen"))
         endpoint.raw = node
         changed += 1

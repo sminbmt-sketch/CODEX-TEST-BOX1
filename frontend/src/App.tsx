@@ -104,6 +104,33 @@ function endpointPlatform(endpoint: EndpointSnapshot) {
   return "-";
 }
 
+function asRecordList(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item)) : [];
+}
+
+function itemCount(value: unknown) {
+  return Array.isArray(value) ? value.length : 0;
+}
+
+function displayField(item: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = item[key];
+    if (value == null) continue;
+    if (Array.isArray(value)) {
+      const text = value.filter(Boolean).join(", ");
+      if (text) return text;
+      continue;
+    }
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "-";
+}
+
+function previewItems(value: unknown, limit = 3) {
+  return asRecordList(value).slice(0, limit);
+}
+
 function vulnerabilitySummary(item: Vulnerability) {
   return item.summary || item.description || "수집된 원문 링크와 CVE 메타데이터 확인이 필요합니다.";
 }
@@ -893,12 +920,12 @@ export default function App() {
 
         {route === "tanium-inventory" && (
           <section>
-            <PageTitle title="Tanium Inventory" description="Tanium API로 수집한 단말 기본 정보를 제공합니다." badge={`${state.summary?.endpoint_count ?? state.inventory.length} endpoints`} tone="ok" />
+            <PageTitle title="Tanium Inventory" description="Tanium API로 수집한 단말, 설치 프로그램, 실행 프로세스, SBOM 기반 finding 정보를 제공합니다." badge={`${state.summary?.endpoint_count ?? state.inventory.length} endpoints`} tone="ok" />
             <article className="page-card">
               <header>
                 <div>
                   <h3>수집 단말 목록</h3>
-                  <p>Host Name, IP, MAC, Operating System, Platform 기준으로 표시합니다.</p>
+                  <p>Host Name, IP, MAC, OS, Platform과 확장 inventory 개수를 표시합니다.</p>
                 </div>
                 <span className={state.tanium?.configured ? "pill ok" : "pill neutral"}>{state.tanium?.configured ? "Online" : "Missing"}</span>
               </header>
@@ -909,15 +936,55 @@ export default function App() {
                   <span>MAC</span>
                   <span>Operating System</span>
                   <span>Platform</span>
+                  <span>Inventory</span>
                 </div>
                 {state.inventory.map((endpoint) => (
-                  <div key={endpoint.id} className="inventory-row">
-                    <strong>{endpoint.hostname || endpoint.tanium_endpoint_id || "Unknown"}</strong>
-                    <span>{endpoint.ip_address || "-"}</span>
-                    <span>{endpoint.mac_address || "-"}</span>
-                    <span>{[endpoint.os_name, endpoint.os_version].filter(Boolean).join(" ") || "-"}</span>
-                    <span>{endpointPlatform(endpoint)}</span>
-                  </div>
+                  <article key={endpoint.id} className="inventory-card">
+                    <div className="inventory-row">
+                      <strong>{endpoint.hostname || endpoint.tanium_endpoint_id || "Unknown"}</strong>
+                      <span>{endpoint.ip_address || "-"}</span>
+                      <span>{endpoint.mac_address || "-"}</span>
+                      <span>{[endpoint.os_name, endpoint.os_version].filter(Boolean).join(" ") || "-"}</span>
+                      <span>{endpointPlatform(endpoint)}</span>
+                      <span className="inventory-counts">
+                        <b>SW {itemCount(endpoint.software)}</b>
+                        <b>PROC {itemCount(endpoint.processes)}</b>
+                        <b>SBOM {itemCount(endpoint.sbom)}</b>
+                      </span>
+                    </div>
+                    <div className="inventory-detail-grid">
+                      <div>
+                        <h4>Installed Software</h4>
+                        {previewItems(endpoint.software).map((item, index) => (
+                          <p key={`software-${endpoint.id}-${index}`}>
+                            <strong>{displayField(item, ["name"])}</strong>
+                            <span>{displayField(item, ["version"])}</span>
+                          </p>
+                        ))}
+                        {!itemCount(endpoint.software) && <p className="muted">수집된 설치 프로그램 없음</p>}
+                      </div>
+                      <div>
+                        <h4>Processes</h4>
+                        {previewItems(endpoint.processes).map((item, index) => (
+                          <p key={`process-${endpoint.id}-${index}`}>
+                            <strong>{displayField(item, ["column", "sensor"])}</strong>
+                            <span>{displayField(item, ["values"])}</span>
+                          </p>
+                        ))}
+                        {!itemCount(endpoint.processes) && <p className="muted">프로세스 센서 결과 없음</p>}
+                      </div>
+                      <div>
+                        <h4>SBOM Findings</h4>
+                        {previewItems(endpoint.sbom).map((item, index) => (
+                          <p key={`sbom-${endpoint.id}-${index}`}>
+                            <strong>{displayField(item, ["cveId"])}</strong>
+                            <span>{displayField(item, ["detectedProducts", "severityV3", "severity"])}</span>
+                          </p>
+                        ))}
+                        {!itemCount(endpoint.sbom) && <p className="muted">SBOM 기반 finding 없음</p>}
+                      </div>
+                    </div>
+                  </article>
                 ))}
                 {!state.inventory.length && <div className="empty block">No endpoint inventory</div>}
               </div>

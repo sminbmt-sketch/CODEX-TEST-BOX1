@@ -58,6 +58,12 @@ def _ensure_schema() -> None:
             connection.execute(text("ALTER TABLE endpoint_snapshots ADD COLUMN mac_address VARCHAR(64)"))
         if "platform" not in endpoint_columns:
             connection.execute(text("ALTER TABLE endpoint_snapshots ADD COLUMN platform VARCHAR(255)"))
+        if "processes" not in endpoint_columns:
+            connection.execute(text("ALTER TABLE endpoint_snapshots ADD COLUMN processes JSON"))
+        if "services" not in endpoint_columns:
+            connection.execute(text("ALTER TABLE endpoint_snapshots ADD COLUMN services JSON"))
+        if "sbom" not in endpoint_columns:
+            connection.execute(text("ALTER TABLE endpoint_snapshots ADD COLUMN sbom JSON"))
 
 
 def get_db() -> Generator[Session, None, None]:

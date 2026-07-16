@@ -694,11 +694,76 @@ button:disabled {
 
 .inventory-row {
   display: grid;
-  grid-template-columns: minmax(150px, 1.1fr) 130px 150px minmax(190px, 1.4fr) 120px;
+  grid-template-columns: minmax(150px, 1.1fr) 130px 150px minmax(190px, 1.4fr) 110px minmax(190px, 1fr);
   gap: 10px;
   border-bottom: 1px solid #202c38;
   padding: 12px 14px;
   font-size: 13px;
+}
+
+.inventory-card {
+  border-bottom: 1px solid #202c38;
+}
+
+.inventory-card .inventory-row {
+  border-bottom: 0;
+}
+
+.inventory-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.inventory-counts b {
+  border: 1px solid #304153;
+  border-radius: 999px;
+  color: #a7d8e7;
+  font-size: 11px;
+  padding: 3px 7px;
+}
+
+.inventory-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+
+.inventory-detail-grid > div {
+  border: 1px solid #263240;
+  border-radius: 7px;
+  background: #101821;
+  padding: 10px;
+  min-width: 0;
+}
+
+.inventory-detail-grid h4 {
+  color: #9aa7b5;
+  font-size: 11px;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
+
+.inventory-detail-grid p {
+  display: grid;
+  gap: 3px;
+  margin: 0 0 8px;
+}
+
+.inventory-detail-grid p:last-child {
+  margin-bottom: 0;
+}
+
+.inventory-detail-grid strong,
+.inventory-detail-grid span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.muted {
+  color: #718093;
 }
 
 .toolbar {
@@ -998,6 +1063,10 @@ button:disabled {
 
   .cve-row,
   .inventory-row {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-detail-grid {
     grid-template-columns: 1fr;
   }
 

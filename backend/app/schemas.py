@@ -88,6 +88,10 @@ class EndpointSnapshotOut(BaseModel):
     os_name: str | None = None
     os_version: str | None = None
     platform: str | None = None
+    software: dict | list | None = None
+    processes: dict | list | None = None
+    services: dict | list | None = None
+    sbom: dict | list | None = None
     last_seen_at: datetime | None = None
 
 
