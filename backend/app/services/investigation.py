@@ -23,6 +23,11 @@ PRODUCT_BEFORE_VERSION_RE = re.compile(
     r"([A-Z][A-Za-z0-9+()./' -]{2,120})\s+before\s+(?:versions?\s+)?([0-9][0-9A-Za-z./-]*(?:\s*,\s*[0-9][0-9A-Za-z./-]*)*(?:\s*,?\s*and\s*[0-9][0-9A-Za-z./-]*)?)",
     re.IGNORECASE,
 )
+PRODUCT_FIXED_VERSION_RE = re.compile(
+    r"([A-Z0-9][A-Za-z0-9+()./' -]{1,80})\s+version\s+([0-9][0-9A-Za-z./-]*)\s+(?:was\s+)?(?:released|published|issued).{0,180}?\bfix(?:es|ed)?\b",
+    re.IGNORECASE,
+)
+UPDATE_TO_VERSION_RE = re.compile(r"\bupdate\s+to\s+version\s+([0-9][0-9A-Za-z./-]*)\b", re.IGNORECASE)
 OS_KEYWORDS = ("Windows", "macOS", "Mac OS", "Linux", "Ubuntu", "Debian", "Android", "iOS", "ChromeOS")
 GENERIC_SOFTWARE_TERMS = {"windows", "linux", "android", "ios", "macos", "mac os", "meeting", "remote", "client", "plugin", "sdk"}
 STOPWORDS = {
@@ -201,6 +206,12 @@ def _extract_affected_products(text: str) -> list[dict[str, Any]]:
                     platform = "macOS" if os_name.lower() == "mac os" else os_name
                     break
             products.append({"name": name, "platform": platform, "affected_versions": versions})
+    for match in PRODUCT_FIXED_VERSION_RE.finditer(text):
+        versions = _version_values(match.group(2))
+        if not versions:
+            continue
+        for name in _split_product_candidates(match.group(1)):
+            products.append({"name": name, "platform": "unknown", "affected_versions": versions})
     known_platforms = _unique([str(product["platform"]) for product in products if product.get("platform") and product.get("platform") != "unknown"])
     if len(known_platforms) == 1:
         for product in products:
@@ -224,6 +235,24 @@ def _software_from_affected_products(products: list[dict[str, Any]]) -> list[str
         if _normalize_product(name).startswith("zoom workplace"):
             names.append("Zoom")
     return _unique(names)
+
+
+def _relevant_cves(text: str, product_names: list[str]) -> list[str]:
+    all_cves = _unique([value.upper() for value in CVE_RE.findall(text)])
+    if not all_cves or not product_names:
+        return all_cves
+    product_terms = [term for name in product_names for term in _product_terms(name)]
+    if not product_terms:
+        return all_cves
+    relevant: list[str] = []
+    for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
+        sentence_cves = [value.upper() for value in CVE_RE.findall(sentence)]
+        if not sentence_cves:
+            continue
+        normalized = _normalize_product(sentence)
+        if any(term in normalized for term in product_terms):
+            relevant.extend(sentence_cves)
+    return _unique(relevant)
 
 
 def _source_payload(db: Session, source_type: str, item_id: int) -> tuple[str, str, str | None, Article | Vulnerability]:
@@ -278,9 +307,12 @@ async def _fetch_source_text(source_url: str | None) -> tuple[str | None, str | 
 def _rules_intelligence(source_type: str, title: str, body: str, source_url: str | None) -> dict[str, Any]:
     text = f"{title}\n{body}"
     files = _unique(PROCESS_RE.findall(text))
-    cves = _unique([value.upper() for value in CVE_RE.findall(text)])
     affected_products = _extract_affected_products(text)
+    if not affected_products and "7-zip" in text.lower():
+        versions = _unique(UPDATE_TO_VERSION_RE.findall(text))
+        affected_products = [{"name": "7-Zip", "platform": "unknown", "affected_versions": versions}] if versions else []
     software = _software_from_affected_products(affected_products)
+    cves = _unique([value.upper() for value in CVE_RE.findall(text)]) if source_type == "cve" else _relevant_cves(text, software)
     if source_type == "cve":
         software = _unique([*software, *_tokens(text)])
     versions = _unique([version for product in affected_products for version in product.get("affected_versions", [])])
@@ -480,6 +512,8 @@ def _normalize_product(value: str) -> str:
 def _product_terms(product_name: str) -> list[str]:
     normalized = _normalize_product(product_name)
     terms = [normalized] if normalized else []
+    if normalized in {"7 zip", "7zip"} or "7 zip" in normalized:
+        terms.extend(["7 zip", "7zip", "p7zip"])
     if normalized.startswith("zoom workplace"):
         terms.append("zoom workplace")
         terms.append("zoom")
