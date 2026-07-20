@@ -881,6 +881,8 @@ button:disabled {
 .investigation-list {
   display: grid;
   gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: stretch;
   max-height: 620px;
   overflow: auto;
   padding: 0 14px 14px;
@@ -890,8 +892,11 @@ button:disabled {
 
 .investigation-item {
   align-items: start;
+  cursor: pointer;
   display: grid;
   gap: 6px;
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: stretch;
   justify-items: start;
   width: 100%;
   min-height: 0;
@@ -911,7 +916,13 @@ button:disabled {
   background: #10202b;
 }
 
+.investigation-item:focus-visible {
+  outline: 2px solid #1aa3b8;
+  outline-offset: 2px;
+}
+
 .investigation-item-title {
+  display: block;
   font-size: 14px;
   font-weight: 850;
   line-height: 1.35;
@@ -921,6 +932,7 @@ button:disabled {
 
 .investigation-item-meta {
   color: #8f9dab;
+  display: block;
   font-size: 12px;
   text-align: left;
   width: 100%;
@@ -992,7 +1004,7 @@ button:disabled {
 
 .investigation-summary-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -1031,6 +1043,27 @@ button:disabled {
   margin: 0;
   font-size: 13px;
   line-height: 1.5;
+}
+
+.investigation-empty-reason {
+  margin-top: 8px !important;
+  color: #ffd98a !important;
+}
+
+.investigation-methods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.investigation-methods span {
+  border: 1px solid #304153;
+  border-radius: 999px;
+  color: #9aa7b5;
+  font-size: 11px;
+  font-weight: 760;
+  padding: 5px 8px;
 }
 
 .affected-product-list {

@@ -218,6 +218,12 @@ class SummaryService:
             return None
 
         system_prompt, user_prompt = self._prompts(title, body, source_urls, source_type)
+        return await self.complete(system_prompt, user_prompt)
+
+    async def complete(self, system_prompt: str, user_prompt: str) -> str | None:
+        if self.config.provider == "disabled":
+            return None
+
         if self.config.provider in {"ollama", "openai"}:
             return await self._chat_completions(system_prompt, user_prompt)
         if self.config.provider == "gemini":
@@ -242,6 +248,8 @@ class SummaryService:
             "temperature": 0.2,
             "max_tokens": self.config.max_tokens,
         }
+        if self.config.provider == "openai":
+            payload["response_format"] = {"type": "json_object"}
         headers = {"Content-Type": "application/json"}
         if self.config.api_key:
             headers["Authorization"] = f"Bearer {self.config.api_key}"
@@ -261,7 +269,7 @@ class SummaryService:
         payload = {
             "systemInstruction": {"parts": [{"text": system_prompt}]},
             "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
-            "generationConfig": {"temperature": 0.2, "maxOutputTokens": self.config.max_tokens},
+            "generationConfig": {"temperature": 0.2, "maxOutputTokens": self.config.max_tokens, "responseMimeType": "application/json"},
         }
         url = f"{self.config.base_url.rstrip('/')}/models/{self.config.model}:generateContent"
         params = {"key": self.config.api_key} if self.config.api_key else None

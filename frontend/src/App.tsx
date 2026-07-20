@@ -229,13 +229,37 @@ function investigationCounts(run?: InvestigationRun) {
     confirmed: Number(counts.confirmed || 0),
     potential: Number(counts.potential || 0),
     environment_candidate: Number(counts.environment_candidate || 0),
+    insufficient_data: Number(counts.insufficient_data || 0),
     not_affected: Number(counts.not_affected || 0),
     total_endpoints: Number(counts.total_endpoints || 0),
   };
 }
 
-function investigationBucket(run: InvestigationRun | undefined, key: "confirmed" | "potential" | "environment_candidates" | "not_affected") {
+function investigationBucket(run: InvestigationRun | undefined, key: "confirmed" | "potential" | "environment_candidates" | "insufficient_data" | "not_affected") {
   return asRecordList(investigationResults(run)[key]);
+}
+
+function investigationMeta(run: InvestigationRun | undefined, key: "analysis_mode" | "planner" | "judge" | "tanium_evidence") {
+  return investigationResults(run)[key];
+}
+
+function investigationModeLabel(run?: InvestigationRun) {
+  const mode = String(investigationMeta(run, "analysis_mode") || "rules_fallback");
+  if (mode === "llm_planned") return "LLM 계획 + LLM 판정";
+  if (mode === "llm_plan_rules_assessment") return "LLM 계획 + 룰 판정";
+  return "룰 fallback";
+}
+
+function investigationMethodLabel(run: InvestigationRun | undefined, key: "planner" | "judge") {
+  const value = asPlainRecord(investigationMeta(run, key));
+  const method = value.method ? String(value.method) : "-";
+  const error = value.error ? ` · ${String(value.error)}` : "";
+  return `${method}${error}`;
+}
+
+function investigationEmptyReason(run?: InvestigationRun) {
+  const evidence = asPlainRecord(investigationMeta(run, "tanium_evidence"));
+  return evidence.empty_match_reason ? String(evidence.empty_match_reason) : "";
 }
 
 function evidenceSummary(item: Record<string, unknown>) {
@@ -249,8 +273,9 @@ function evidenceSummary(item: Record<string, unknown>) {
       const installed = entry.installed_name ? String(entry.installed_name) : "";
       const version = entry.installed_version ? ` ${String(entry.installed_version)}` : "";
       const keyword = entry.keyword ? String(entry.keyword) : "";
+      const service = entry.service_name ? `(${String(entry.service_name)})` : "";
       const status = entry.version_status ? ` · ${String(entry.version_status)}` : "";
-      return [scope, product || keyword, installed ? `(${installed}${version})` : "", status].filter(Boolean).join(" ");
+      return [scope, product || keyword, installed ? `(${installed}${version})` : service, status].filter(Boolean).join(" ");
     })
     .join(" / ");
 }
@@ -264,6 +289,7 @@ function classificationLabel(key: string) {
   if (key === "confirmed") return "확정 영향";
   if (key === "potential") return "추가 확인";
   if (key === "environment_candidates") return "환경 후보";
+  if (key === "insufficient_data") return "증거 부족";
   if (key === "not_affected") return "영향 없음";
   return key;
 }
@@ -272,6 +298,7 @@ function classificationPill(key: string) {
   if (key === "confirmed") return "pill critical";
   if (key === "potential") return "pill high";
   if (key === "environment_candidates") return "pill neutral";
+  if (key === "insufficient_data") return "pill neutral";
   return "pill ok";
 }
 
@@ -1168,20 +1195,28 @@ export default function App() {
                       ? `${article.source?.name || "Security News"} · ${formatDate(article.published_at)}`
                       : `${cve?.cvss_severity || "N/A"} · ${formatDate(cve?.published_at)}`;
                     const summary = article ? articleDisplay(article).summary : vulnerabilitySummary(cve as Vulnerability);
+                    const selectTarget = () => {
+                      setInvestigationTarget((current) => ({ ...current, itemId: item.id }));
+                      setInvestigationResult(undefined);
+                    };
                     return (
-                      <button
+                      <article
                         key={`${investigationTarget.sourceType}-${item.id}`}
-                        type="button"
                         className={investigationTarget.itemId === item.id ? "investigation-item selected" : "investigation-item"}
-                        onClick={() => {
-                          setInvestigationTarget((current) => ({ ...current, itemId: item.id }));
-                          setInvestigationResult(undefined);
+                        role="button"
+                        tabIndex={0}
+                        onClick={selectTarget}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            selectTarget();
+                          }
                         }}
                       >
                         <span className="investigation-item-title">{title}</span>
                         <span className="investigation-item-meta">{subtitle}</span>
                         <span className="investigation-item-summary">{summary}</span>
-                      </button>
+                      </article>
                     );
                   })}
                   {investigationLoading && <div className="empty block">조사 대상 목록을 불러오는 중입니다.</div>}
@@ -1224,6 +1259,7 @@ export default function App() {
                         ["confirmed", "확정 영향", investigationCounts(investigationResult).confirmed],
                         ["potential", "추가 확인", investigationCounts(investigationResult).potential],
                         ["environment_candidates", "환경 후보", investigationCounts(investigationResult).environment_candidate],
+                        ["insufficient_data", "증거 부족", investigationCounts(investigationResult).insufficient_data],
                         ["not_affected", "영향 없음", investigationCounts(investigationResult).not_affected],
                       ].map(([key, label, value]) => (
                         <div key={String(key)} className="result-metric">
@@ -1237,6 +1273,12 @@ export default function App() {
                       <div>
                         <h4>영향 제품 / 버전 조건</h4>
                         <p>{investigationResult.summary || "조사 결과 요약 없음"}</p>
+                        {investigationEmptyReason(investigationResult) && <p className="investigation-empty-reason">{investigationEmptyReason(investigationResult)}</p>}
+                        <div className="investigation-methods">
+                          <span>{investigationModeLabel(investigationResult)}</span>
+                          <span>Planner: {investigationMethodLabel(investigationResult, "planner")}</span>
+                          <span>Judge: {investigationMethodLabel(investigationResult, "judge")}</span>
+                        </div>
                       </div>
                       <div className="affected-product-list">
                         {asRecordList(investigationPlan(investigationResult).affected_products).slice(0, 8).map((product, index) => (
@@ -1253,6 +1295,7 @@ export default function App() {
                       <InvestigationAssessmentList title={classificationLabel("confirmed")} bucketKey="confirmed" rows={investigationBucket(investigationResult, "confirmed")} />
                       <InvestigationAssessmentList title={classificationLabel("potential")} bucketKey="potential" rows={investigationBucket(investigationResult, "potential")} />
                       <InvestigationAssessmentList title={classificationLabel("environment_candidates")} bucketKey="environment_candidates" rows={investigationBucket(investigationResult, "environment_candidates")} />
+                      <InvestigationAssessmentList title={classificationLabel("insufficient_data")} bucketKey="insufficient_data" rows={investigationBucket(investigationResult, "insufficient_data")} />
                       <InvestigationAssessmentList title={classificationLabel("not_affected")} bucketKey="not_affected" rows={investigationBucket(investigationResult, "not_affected")} />
                     </div>
 

@@ -43,7 +43,7 @@ async def create_intelligence(payload: InvestigationRequest, db: Session = Depen
 async def run_investigation(payload: InvestigationRequest, db: Session = Depends(get_db)) -> InvestigationRunOut:
     try:
         intelligence = await build_intelligence(db, payload.source_type, payload.item_id, refresh=payload.refresh_intelligence)
-        run = run_inventory_investigation(db, intelligence)
+        run = await run_inventory_investigation(db, intelligence)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
