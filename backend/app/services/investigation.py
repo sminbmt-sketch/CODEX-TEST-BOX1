@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import replace
 from html.parser import HTMLParser
 from typing import Any
 
@@ -46,23 +47,70 @@ STOPWORDS = {
     "code",
     "execution",
 }
+INVESTIGATION_SOURCE_CHAR_LIMIT = 30000
+INVESTIGATION_MIN_OUTPUT_TOKENS = 2048
+INVESTIGATION_MAX_OUTPUT_TOKENS = 4096
+
 
 class _ArticleTextParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self._skip_depth = 0
+        self._table_depth = 0
+        self._row_cells: list[str] | None = None
+        self._cell_chunks: list[str] | None = None
         self._chunks: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in {"script", "style", "noscript", "svg", "nav", "footer"}:
+        tag_name = tag.lower()
+        if tag_name in {"script", "style", "noscript", "svg", "nav", "footer"}:
             self._skip_depth += 1
-        if tag in {"p", "br", "div", "article", "section", "li", "h1", "h2", "h3"}:
+            return
+        if self._skip_depth:
+            return
+        if tag_name == "table":
+            self._table_depth += 1
+            self._chunks.append("\n")
+            return
+        if self._table_depth:
+            if tag_name == "tr":
+                self._row_cells = []
+                self._cell_chunks = None
+                return
+            if tag_name in {"td", "th"} and self._row_cells is not None:
+                self._cell_chunks = []
+                return
+            if tag_name == "br" and self._cell_chunks is not None:
+                self._cell_chunks.append(" ")
+                return
+        if tag_name in {"p", "br", "div", "article", "section", "li", "h1", "h2", "h3"}:
             self._chunks.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in {"script", "style", "noscript", "svg", "nav", "footer"} and self._skip_depth:
+        tag_name = tag.lower()
+        if tag_name in {"script", "style", "noscript", "svg", "nav", "footer"} and self._skip_depth:
             self._skip_depth -= 1
-        if tag in {"p", "div", "article", "section", "li", "h1", "h2", "h3"}:
+            return
+        if self._skip_depth:
+            return
+        if self._table_depth:
+            if tag_name in {"td", "th"} and self._row_cells is not None:
+                cell = re.sub(r"\s+", " ", " ".join(self._cell_chunks or [])).strip()
+                self._row_cells.append(cell)
+                self._cell_chunks = None
+                return
+            if tag_name == "tr":
+                cells = [cell for cell in (self._row_cells or []) if cell]
+                if cells:
+                    self._chunks.append("TABLE_ROW | " + " | ".join(cells))
+                self._row_cells = None
+                self._cell_chunks = None
+                return
+            if tag_name == "table":
+                self._table_depth = max(0, self._table_depth - 1)
+                self._chunks.append("\n")
+                return
+        if tag_name in {"p", "div", "article", "section", "li", "h1", "h2", "h3"}:
             self._chunks.append("\n")
 
     def handle_data(self, data: str) -> None:
@@ -70,6 +118,10 @@ class _ArticleTextParser(HTMLParser):
             return
         text = re.sub(r"\s+", " ", data).strip()
         if text:
+            if self._table_depth and self._row_cells is not None:
+                if self._cell_chunks is not None:
+                    self._cell_chunks.append(text)
+                return
             self._chunks.append(text)
 
     def text(self) -> str:
@@ -88,7 +140,14 @@ NEWS_INTELLIGENCE_SCHEMA = {
     "investigation_keywords": {
         "software": ["product/vendor/application names to search in installedApplications"],
         "versions": ["affected version strings explicitly stated in the source"],
-        "affected_products": [{"name": "product name", "platform": "Windows|Linux|macOS|unknown", "affected_versions": ["version strings"]}],
+        "affected_products": [
+            {
+                "name": "product name",
+                "platform": "Windows|Linux|macOS|unknown",
+                "affected_versions": ["version strings"],
+                "fixed_versions": ["patched or resolved version strings"],
+            }
+        ],
         "processes": ["process names or executable/script names to search in Running Processes sensor values"],
         "services": ["service names to search in endpoint service inventory"],
         "os": ["operating system/platform keywords"],
@@ -108,7 +167,7 @@ COMPACT_NEWS_INTELLIGENCE_SCHEMA = {
     "investigation_keywords": {
         "software": [],
         "versions": [],
-        "affected_products": [{"name": "", "platform": "unknown", "affected_versions": []}],
+        "affected_products": [{"name": "", "platform": "unknown", "affected_versions": [], "fixed_versions": []}],
         "processes": [],
         "services": [],
         "os": [],
@@ -191,6 +250,19 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _investigation_llm_config(db: Session):
+    config = resolve_llm_config(db)
+    if config.provider == "disabled":
+        return config
+    return replace(
+        config,
+        max_tokens=min(
+            INVESTIGATION_MAX_OUTPUT_TOKENS,
+            max(config.max_tokens, INVESTIGATION_MIN_OUTPUT_TOKENS),
+        ),
+    )
+
+
 def _extract_ips(text: str) -> list[str]:
     values: list[str] = []
     for match in IP_RE.finditer(text):
@@ -207,30 +279,9 @@ def _tokens(text: str) -> list[str]:
     return _unique([value for value in values if value.lower() not in STOPWORDS])[:20]
 
 
-def _focus_source_text(title: str, body: str, max_chars: int = 6000) -> str:
-    title_terms = [term.lower() for term in _tokens(title) if len(term) >= 4]
-    priority_patterns = re.compile(
-        r"\b(?:CVE-\d{4}-\d{4,7}|vulnerab|exploit|affect|affected|impact|patch|patched|fix|fixed|before|version|versions|update|upgrade|RCE|remote code execution|denial-of-service|DoS)\b",
-        re.IGNORECASE,
-    )
-    lines = [re.sub(r"\s+", " ", line).strip() for line in body.splitlines()]
-    selected: list[str] = []
-    seen: set[str] = set()
-    for line in lines:
-        if len(line) < 18:
-            continue
-        lowered = line.lower()
-        if not priority_patterns.search(line) and not any(term in lowered for term in title_terms):
-            continue
-        if lowered in seen:
-            continue
-        seen.add(lowered)
-        selected.append(line)
-        if sum(len(value) for value in selected) >= max_chars:
-            break
-    if selected:
-        return "\n".join(selected)[:max_chars]
-    return body[:max_chars]
+def _investigation_source_text(body: str, max_chars: int = INVESTIGATION_SOURCE_CHAR_LIMIT) -> str:
+    text = re.sub(r"\n{3,}", "\n\n", body).strip()
+    return text[:max_chars]
 
 
 def _clean_product_name(value: str) -> str:
@@ -297,6 +348,34 @@ def _extract_affected_products(text: str) -> list[dict[str, Any]]:
             if product.get("platform") == "unknown":
                 product["platform"] = known_platforms[0]
     return products[:30]
+
+
+def _extract_table_affected_products(text: str) -> list[dict[str, Any]]:
+    products: list[dict[str, Any]] = []
+    for line in text.splitlines():
+        if "TABLE_ROW" not in line:
+            continue
+        cells = [cell.strip() for cell in line.split("|")[1:]]
+        if len(cells) < 4:
+            continue
+        cve = next((value.upper() for value in CVE_RE.findall(cells[0])), "")
+        if not cve:
+            continue
+        product = cells[1]
+        affected = cells[2]
+        fixed = cells[3]
+        if not product or not affected:
+            continue
+        products.append(
+            {
+                "name": product,
+                "platform": "unknown",
+                "affected_versions": [affected],
+                "fixed_versions": [fixed] if fixed else [],
+                "cve": cve,
+            }
+        )
+    return products[:80]
 
 
 def _add_known_product_hints(text: str, products: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -406,13 +485,15 @@ async def _fetch_source_text(source_url: str | None) -> tuple[str | None, str | 
     text = re.sub(r"[ \t]{2,}", " ", text).strip()
     if len(text) < 120:
         return None, "source_fetch_too_short"
-    return text[:12000], None
+    return text[:INVESTIGATION_SOURCE_CHAR_LIMIT], None
 
 
 def _rules_intelligence(source_type: str, title: str, body: str, source_url: str | None) -> dict[str, Any]:
     text = f"{title}\n{body}"
     files = _unique(PROCESS_RE.findall(text))
-    affected_products = _add_known_product_hints(text, _extract_affected_products(text))
+    affected_products = _extract_table_affected_products(text)
+    if not affected_products:
+        affected_products = _add_known_product_hints(text, _extract_affected_products(text))
     if not affected_products and "7-zip" in text.lower():
         versions = _unique(UPDATE_TO_VERSION_RE.findall(text))
         affected_products = [{"name": "7-Zip", "platform": "unknown", "affected_versions": versions}] if versions else []
@@ -515,8 +596,32 @@ def _normalize_affected_products(values: Any) -> list[dict[str, Any]]:
             continue
         platform = str(item.get("platform") or "unknown").strip() or "unknown"
         versions = _string_values(item.get("affected_versions") or item.get("versions") or [])
-        products.append({"name": name, "platform": platform, "affected_versions": versions})
+        fixed_versions = _string_values(
+            item.get("fixed_versions")
+            or item.get("fixed_version")
+            or item.get("remediation_versions")
+            or item.get("patched_versions")
+            or []
+        )
+        product = {"name": name, "platform": platform, "affected_versions": versions}
+        if fixed_versions:
+            product["fixed_versions"] = fixed_versions
+        if item.get("cve"):
+            product["cve"] = str(item.get("cve")).upper()
+        products.append(product)
     return products[:30]
+
+
+def _version_detail_count(products: list[dict[str, Any]]) -> int:
+    count = 0
+    for product in products:
+        if not isinstance(product, dict):
+            continue
+        if product.get("cve"):
+            count += 1
+        count += len(product.get("affected_versions") or [])
+        count += len(product.get("fixed_versions") or [])
+    return count
 
 
 def _normalize_intelligence_payload(
@@ -554,8 +659,11 @@ def _normalize_intelligence_payload(
     allowed_ips = set(_extract_ips(source_text))
     ip_values = [value for value in _string_values(ioc.get("ip")) if value in allowed_ips]
     affected_products = _normalize_affected_products(keywords.get("affected_products"))
+    fallback_affected_products = _normalize_affected_products(fallback_keywords.get("affected_products"))
+    if _version_detail_count(fallback_affected_products) > _version_detail_count(affected_products):
+        affected_products = fallback_affected_products
     if not affected_products:
-        affected_products = _normalize_affected_products(fallback_keywords.get("affected_products"))
+        affected_products = fallback_affected_products
     software = _string_values(keywords.get("software"), source_text)
     if not software:
         software = _string_values(fallback_keywords.get("software"))
@@ -609,14 +717,14 @@ async def build_intelligence(db: Session, source_type: str, item_id: int, refres
     title, local_body, source_url, source = _source_payload(db, source_type, item_id)
     fetched_body, fetch_error = await _fetch_source_text(source_url)
     body = fetched_body or local_body
-    prompt_body = _focus_source_text(title, body)
+    prompt_body = _investigation_source_text(body)
     source_fetch = "fetched_url" if fetched_body else "fallback_local"
     fallback_payload = _rules_intelligence(source_type, title, body, source_url)
     fallback_payload["content"]["source_fetch"] = source_fetch
     payload = fallback_payload
     method = "rules"
     error = fetch_error
-    llm_config = resolve_llm_config(db)
+    llm_config = _investigation_llm_config(db)
     if llm_config.provider != "disabled":
         schema = json.dumps(COMPACT_NEWS_INTELLIGENCE_SCHEMA, ensure_ascii=False, separators=(",", ":"))
         system_prompt = (
@@ -629,8 +737,12 @@ async def build_intelligence(db: Session, source_type: str, item_id: int, refres
             "Focus on affected products, product aliases, vulnerable or fixed versions, process names, services, OS/platforms, CVEs, files, domains, IPs, and hashes. "
             "For product vulnerabilities, affected_products must include the software name even when exact vulnerable versions are not fully clear. "
             "For fixed-release articles, treat the fixed version as the threshold used to identify older potentially affected installs. "
-            "Keep only the most important 5 software names and 5 affected_products. Prefer core affected products over related products. "
-            "Use compact version strings such as 1.30.4 instead of prose. content.summary must be Korean and 120 characters or less. "
+            "Preserve source tables as row-level evidence. Do not collapse CVE/product/version rows into one vague product. "
+            "When a table has CVE, product, affected version, and fixed version columns, create one affected_products object per row. "
+            "If a source table row contains a CVE ID, the affected_products object for that row must include the same cve value. "
+            "For Korean version conditions, keep exact strings such as '37.0.3.1 미만' and fixed/remediation strings such as '37.0.3.1 이상'. "
+            "Each affected_products row may include cve, affected_versions, and fixed_versions. "
+            "Keep product/version data complete, but keep summary/actions concise. content.summary must be Korean and 120 characters or less. "
             "Do not invent indicators. IOC values must appear in the source text. "
             "Never classify product versions as IP addresses. "
             "If evidence is absent, use empty arrays. "
@@ -639,7 +751,7 @@ async def build_intelligence(db: Session, source_type: str, item_id: int, refres
             f"Required compact JSON schema: {schema}\n\n"
             f"Source type: {source_type}\nTitle: {title}\nSource URL: {source_url or ''}\n"
             f"Source fetch status: {source_fetch}\n"
-            f"Focused source text:\n{prompt_body}"
+            f"Source text:\n{prompt_body}"
         )
         try:
             raw = await SummaryService(llm_config).complete(system_prompt, user_prompt)
@@ -773,6 +885,8 @@ def _product_terms(product_name: str) -> list[str]:
         terms.append("zoom")
     elif normalized == "zoom":
         terms.append("zoom")
+    if normalized in {"nginx plus", "nginx open source"} or normalized.startswith("nginx "):
+        terms.append("nginx")
     return _unique([term for term in terms if len(term) >= 3 and term not in GENERIC_SOFTWARE_TERMS])
 
 
@@ -1008,7 +1122,7 @@ async def _llm_judge_inventory(
     groups: dict[str, list[Any]],
     rule_assessments: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]] | None, dict[str, Any]]:
-    llm_config = resolve_llm_config(db)
+    llm_config = _investigation_llm_config(db)
     if llm_config.provider == "disabled":
         return None, {"method": "rules", "error": "llm_disabled"}
     if not rule_assessments:

@@ -1296,7 +1296,11 @@ export default function App() {
                         {asRecordList(investigationPlan(investigationResult).affected_products).slice(0, 8).map((product, index) => (
                           <div key={`${String(product.name)}-${index}`} className="affected-product">
                             <strong>{String(product.name || "-")}</strong>
-                            <span>{String(product.platform || "unknown")} · before {asStringList(product.affected_versions).join(", ") || "-"}</span>
+                            <span>
+                              {product.cve ? `${String(product.cve)} · ` : ""}
+                              {String(product.platform || "unknown")} · 영향 {asStringList(product.affected_versions).join(", ") || "-"}
+                              {asStringList(product.fixed_versions).length ? ` · 해결 ${asStringList(product.fixed_versions).join(", ")}` : ""}
+                            </span>
                           </div>
                         ))}
                         {!asRecordList(investigationPlan(investigationResult).affected_products).length && <div className="empty block">영향 제품 정보 없음</div>}
