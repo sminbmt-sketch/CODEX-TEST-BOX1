@@ -3,6 +3,7 @@ import { CalendarClock, DatabaseZap, ExternalLink, FileText, Mail, Plus, Radar, 
 import { api, type Article, type AutomationSettings, type CollectionJobStatus, type DashboardSummary, type DataResetTarget, type Detection, type EmailSettings, type EndpointSnapshot, type InvestigationRun, type LlmProvider, type LlmSettings, type Source, type SummaryLogItem, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
 
 type Route = "dashboard" | "cves" | "security-news" | "tanium-inventory" | "investigation" | "reports" | "logs" | "settings";
+type InvestigationTargetType = "news" | "kisa" | "cve";
 
 type LoadState = {
   summary?: DashboardSummary;
@@ -363,7 +364,7 @@ export default function App() {
   const [newsSummaryMode, setNewsSummaryMode] = useState(false);
   const [selectedCveIds, setSelectedCveIds] = useState<number[]>([]);
   const [selectedArticleIds, setSelectedArticleIds] = useState<number[]>([]);
-  const [investigationTarget, setInvestigationTarget] = useState<{ sourceType: "news" | "cve"; itemId: number | "" }>({ sourceType: "news", itemId: "" });
+  const [investigationTarget, setInvestigationTarget] = useState<{ sourceType: InvestigationTargetType; itemId: number | "" }>({ sourceType: "news", itemId: "" });
   const [investigationItems, setInvestigationItems] = useState<(Article | Vulnerability)[]>([]);
   const [investigationTotal, setInvestigationTotal] = useState(0);
   const [investigationLimit, setInvestigationLimit] = useState(50);
@@ -607,7 +608,7 @@ export default function App() {
     setState((current) => ({ ...current, action: "Tanium Investigation", error: undefined }));
     try {
       const run = await api.runInvestigation({
-        source_type: investigationTarget.sourceType,
+        source_type: investigationTarget.sourceType === "cve" ? "cve" : "news",
         item_id: Number(investigationTarget.itemId),
         refresh_intelligence: true,
       });
@@ -626,8 +627,8 @@ export default function App() {
     if (route !== "investigation") return;
     setInvestigationLoading(true);
     try {
-      if (type === "news") {
-        const params = { limit, offset: 0, sort: "date" as const, category: "news" as const };
+      if (type !== "cve") {
+        const params = { limit, offset: 0, sort: "date" as const, category: type === "kisa" ? "kisa" as const : "news" as const };
         const [items, total] = await Promise.all([api.articles(params), api.articleCount(params)]);
         setInvestigationItems(items);
         setInvestigationTotal(total);
@@ -759,7 +760,7 @@ export default function App() {
   const visibleArticleIds = state.articles.map((item) => item.id);
   const dashboardCves = (state.summary?.top_risks || []).slice(0, 10);
   const selectedInvestigationTitle =
-    investigationTarget.sourceType === "news"
+    investigationTarget.sourceType !== "cve"
       ? (investigationItems.find((item) => item.id === investigationTarget.itemId) as Article | undefined)?.title
       : (investigationItems.find((item) => item.id === investigationTarget.itemId) as Vulnerability | undefined)?.cve_id;
 
@@ -1175,6 +1176,17 @@ export default function App() {
                   </button>
                   <button
                     type="button"
+                    className={investigationTarget.sourceType === "kisa" ? "active" : undefined}
+                    onClick={() => {
+                      setInvestigationTarget({ sourceType: "kisa", itemId: "" });
+                      setInvestigationLimit(50);
+                      setInvestigationResult(undefined);
+                    }}
+                  >
+                    KISA 보안공지
+                  </button>
+                  <button
+                    type="button"
                     className={investigationTarget.sourceType === "cve" ? "active" : undefined}
                     onClick={() => {
                       setInvestigationTarget({ sourceType: "cve", itemId: "" });
@@ -1187,9 +1199,9 @@ export default function App() {
                 </div>
                 <div className="investigation-list" role="list">
                   {investigationItems.map((item) => {
-                    const isNews = investigationTarget.sourceType === "news";
-                    const article = isNews ? (item as Article) : undefined;
-                    const cve = !isNews ? (item as Vulnerability) : undefined;
+                    const isArticleTarget = investigationTarget.sourceType !== "cve";
+                    const article = isArticleTarget ? (item as Article) : undefined;
+                    const cve = !isArticleTarget ? (item as Vulnerability) : undefined;
                     const title = article?.title || cve?.cve_id || "Untitled";
                     const subtitle = article
                       ? `${article.source?.name || "Security News"} · ${formatDate(article.published_at)}`
