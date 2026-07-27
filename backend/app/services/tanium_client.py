@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 import httpx
@@ -19,6 +20,12 @@ class TaniumGatewayClient:
     @property
     def configured(self) -> bool:
         return bool(self.gateway_url and self.api_token)
+
+    @property
+    def rest_base_url(self) -> str | None:
+        if settings.tanium_base_url is None:
+            return None
+        return str(settings.tanium_base_url).rstrip("/")
 
     def _headers(self) -> dict[str, str]:
         if not self.api_token:
@@ -46,6 +53,33 @@ class TaniumGatewayClient:
         if "errors" in data:
             raise RuntimeError(f"Tanium Gateway returned errors: {data['errors']}")
         return data
+
+    async def execute_rest(self, method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        base_url = self.rest_base_url
+        if not base_url:
+            raise TaniumConfigurationError("TANIUM_BASE_URL is not configured.")
+        normalized_path = path if path.startswith("/") else f"/{path}"
+        headers = {
+            **self._headers(),
+            "tanium-options": '{"json_pretty_print":0}',
+        }
+        async with httpx.AsyncClient(verify=self.verify_tls, timeout=self.timeout) as client:
+            response = await client.request(method, f"{base_url}{normalized_path}", json=payload, headers=headers)
+            response.raise_for_status()
+            return response.json()
+
+    async def ask_rest_question(self, question_text: str, wait_seconds: int = 8) -> dict[str, Any]:
+        parsed = await self.execute_rest("POST", "/api/v2/parse_question", {"text": question_text})
+        definitions = parsed.get("data") if isinstance(parsed.get("data"), list) else []
+        if not definitions:
+            raise RuntimeError("Tanium REST parse_question returned no question definitions.")
+        created = await self.execute_rest("POST", "/api/v2/questions", definitions[0])
+        question = created.get("data") if isinstance(created.get("data"), dict) else created
+        question_id = question.get("id") if isinstance(question, dict) else None
+        if question_id is None:
+            raise RuntimeError("Tanium REST question creation returned no question ID.")
+        await asyncio.sleep(wait_seconds)
+        return await self.execute_rest("GET", f"/api/v2/result_data/question/{question_id}")
 
     async def test_connection(self) -> dict[str, Any]:
         return await self.execute_read_only(
