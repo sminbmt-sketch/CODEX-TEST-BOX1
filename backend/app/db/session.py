@@ -62,6 +62,10 @@ def _ensure_schema() -> None:
             connection.execute(text("ALTER TABLE endpoint_snapshots ADD COLUMN processes JSON"))
         if "services" not in endpoint_columns:
             connection.execute(text("ALTER TABLE endpoint_snapshots ADD COLUMN services JSON"))
+        if "hardware" not in endpoint_columns:
+            connection.execute(text("ALTER TABLE endpoint_snapshots ADD COLUMN hardware JSON"))
+        if "ports" not in endpoint_columns:
+            connection.execute(text("ALTER TABLE endpoint_snapshots ADD COLUMN ports JSON"))
         if "sbom" not in endpoint_columns:
             connection.execute(text("ALTER TABLE endpoint_snapshots ADD COLUMN sbom JSON"))
 

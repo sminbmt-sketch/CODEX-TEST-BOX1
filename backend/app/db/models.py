@@ -91,6 +91,8 @@ class EndpointSnapshot(Base):
     software: Mapped[dict | list | None] = mapped_column(JsonType)
     processes: Mapped[dict | list | None] = mapped_column(JsonType)
     services: Mapped[dict | list | None] = mapped_column(JsonType)
+    hardware: Mapped[dict | list | None] = mapped_column(JsonType)
+    ports: Mapped[dict | list | None] = mapped_column(JsonType)
     sbom: Mapped[dict | list | None] = mapped_column(JsonType)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     raw: Mapped[dict | list | None] = mapped_column(JsonType)

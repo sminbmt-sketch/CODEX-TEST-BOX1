@@ -91,6 +91,8 @@ class EndpointSnapshotOut(BaseModel):
     software: dict | list | None = None
     processes: dict | list | None = None
     services: dict | list | None = None
+    hardware: dict | list | None = None
+    ports: dict | list | None = None
     sbom: dict | list | None = None
     last_seen_at: datetime | None = None
 

@@ -142,6 +142,19 @@ function processValues(value: unknown) {
   });
 }
 
+function sensorValues(value: unknown) {
+  return asRecordList(value).flatMap((item) => {
+    const values = item.values;
+    if (Array.isArray(values)) return values.map((entry) => String(entry)).filter(Boolean);
+    const text = displayField(item, ["value", "name", "column"]);
+    return text === "-" ? [] : [text];
+  });
+}
+
+function endpointEtcCount(endpoint: EndpointSnapshot) {
+  return itemCount(endpoint.hardware) + sensorValues(endpoint.ports).length;
+}
+
 function vulnerabilitySummary(item: Vulnerability) {
   return item.summary || item.description || "수집된 원문 링크와 CVE 메타데이터 확인이 필요합니다.";
 }
@@ -413,7 +426,7 @@ export default function App() {
   });
   const [llmMessage, setLlmMessage] = useState<string | undefined>();
   const [llmModels, setLlmModels] = useState<string[]>([]);
-  const [inventoryDetail, setInventoryDetail] = useState<{ endpoint: EndpointSnapshot; type: "software" | "processes" } | null>(null);
+  const [inventoryDetail, setInventoryDetail] = useState<{ endpoint: EndpointSnapshot; type: "software" | "processes" | "etc" } | null>(null);
 
   async function load() {
     setState((current) => ({ ...current, loading: true, error: undefined }));
@@ -1140,6 +1153,7 @@ export default function App() {
                       <span className="inventory-counts">
                         <button type="button" onClick={() => setInventoryDetail({ endpoint, type: "software" })}>Software {itemCount(endpoint.software)}</button>
                         <button type="button" onClick={() => setInventoryDetail({ endpoint, type: "processes" })}>Process {processValues(endpoint.processes).length}</button>
+                        <button type="button" onClick={() => setInventoryDetail({ endpoint, type: "etc" })}>ETC {endpointEtcCount(endpoint)}</button>
                       </span>
                     </div>
                   </article>
@@ -1933,12 +1947,15 @@ function InventoryDetailModal({
   onClose,
 }: {
   endpoint: EndpointSnapshot;
-  type: "software" | "processes";
+  type: "software" | "processes" | "etc";
   onClose: () => void;
 }) {
-  const title = type === "software" ? "Software" : "Process";
+  const title = type === "software" ? "Software" : type === "processes" ? "Process" : "ETC";
   const hostname = endpoint.hostname || endpoint.tanium_endpoint_id || "Unknown";
   const processes = processValues(endpoint.processes);
+  const hardware = asRecordList(endpoint.hardware);
+  const ports = asRecordList(endpoint.ports);
+  const portValues = sensorValues(endpoint.ports);
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
@@ -1977,6 +1994,42 @@ function InventoryDetailModal({
               </div>
               {!processes.length && <p className="muted">프로세스 센서 결과 없음</p>}
             </details>
+          )}
+          {type === "etc" && (
+            <>
+              <details open>
+                <summary>System / Hardware ({hardware.length})</summary>
+                <div className="detail-table etc-detail-table">
+                  <span>Item</span>
+                  <span>Value</span>
+                  {hardware.map((item, index) => (
+                    <div key={`hardware-detail-${index}`} className="detail-row">
+                      <strong>
+                        {displayField(item, ["label", "key"])}
+                        <small>{displayField(item, ["sensor"])}</small>
+                      </strong>
+                      <span>{asStringList(item.values).join(", ") || displayField(item, ["value"])}</span>
+                    </div>
+                  ))}
+                </div>
+                {!hardware.length && <p className="muted">OS 커널/장비 타입/가상화/MAC 센서 결과 없음</p>}
+              </details>
+              <details open>
+                <summary>Open Ports ({portValues.length})</summary>
+                <div className="detail-list">
+                  {ports.flatMap((port, rowIndex) => {
+                    const values = asStringList(port.values);
+                    return values.map((value, valueIndex) => (
+                      <p key={`port-detail-${rowIndex}-${valueIndex}`}>
+                        <strong>{displayField(port, ["column", "sensor"])}</strong>
+                        <span>{value}</span>
+                      </p>
+                    ));
+                  })}
+                </div>
+                {!portValues.length && <p className="muted">Open Port 센서 결과 없음</p>}
+              </details>
+            </>
           )}
         </div>
       </section>

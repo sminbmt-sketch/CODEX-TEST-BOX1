@@ -110,11 +110,11 @@ class TaniumGatewayClient:
             {"first": first},
         )
 
-    async def get_endpoint_process_readings(self, first: int = 50, sensor_name: str = "Running Processes") -> dict[str, Any]:
+    async def get_endpoint_sensor_readings(self, first: int = 50, sensor_name: str = "Running Processes") -> dict[str, Any]:
         first = max(1, min(first, 500))
         return await self.execute_read_only(
             """
-            query SecureWatchEndpointProcessReadings($first: Int!, $sensorName: String!) {
+            query SecureWatchEndpointSensorReadings($first: Int!, $sensorName: String!) {
               endpoints(first: $first) {
                 edges {
                   node {
@@ -135,3 +135,6 @@ class TaniumGatewayClient:
             """,
             {"first": first, "sensorName": sensor_name},
         )
+
+    async def get_endpoint_process_readings(self, first: int = 50, sensor_name: str = "Running Processes") -> dict[str, Any]:
+        return await self.get_endpoint_sensor_readings(first=first, sensor_name=sensor_name)

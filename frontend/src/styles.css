@@ -811,6 +811,11 @@ button:disabled {
   grid-template-columns: minmax(220px, 1fr) minmax(120px, 0.35fr);
 }
 
+.etc-detail-table,
+.etc-detail-table .detail-row {
+  grid-template-columns: minmax(180px, 0.4fr) minmax(260px, 1fr);
+}
+
 .detail-row {
   border-top: 1px solid #202c38;
   display: grid;
@@ -836,6 +841,25 @@ button:disabled {
   border-bottom: 1px solid #202c38;
   font-size: 13px;
   margin: 0;
+}
+
+.detail-row small {
+  color: #718093;
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  margin-top: 3px;
+}
+
+.detail-list p strong {
+  color: #8f9cac;
+  display: inline-block;
+  margin-right: 8px;
+  min-width: 120px;
+}
+
+.detail-list p span {
+  color: #dce7f1;
 }
 
 .muted {
