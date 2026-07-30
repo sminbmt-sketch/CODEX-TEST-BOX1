@@ -990,32 +990,6 @@ button:disabled {
   font-size: 12px;
 }
 
-.investigation-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  border-top: 1px solid #263240;
-  padding: 14px;
-}
-
-.investigation-actions div {
-  display: grid;
-  gap: 4px;
-  min-width: 240px;
-  margin-right: auto;
-}
-
-.investigation-actions strong {
-  color: #edf5fa;
-  font-size: 13px;
-}
-
-.investigation-actions span {
-  color: #8f9dab;
-  font-size: 12px;
-}
-
 .investigation-result-card {
   grid-column: 1 / -1;
 }

@@ -1,4 +1,4 @@
-import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useMemo, useState } from "react";
+import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarClock, DatabaseZap, ExternalLink, FileText, Mail, Plus, Radar, RefreshCw, Search, Server, Trash2, Wifi } from "lucide-react";
 import { api, type Article, type AutomationSettings, type CollectionJobStatus, type DashboardSummary, type DataResetTarget, type Detection, type EmailSettings, type EndpointSnapshot, type InvestigationRun, type LlmProvider, type LlmSettings, type Source, type SummaryLogItem, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
 
@@ -427,6 +427,7 @@ export default function App() {
   const [llmMessage, setLlmMessage] = useState<string | undefined>();
   const [llmModels, setLlmModels] = useState<string[]>([]);
   const [inventoryDetail, setInventoryDetail] = useState<{ endpoint: EndpointSnapshot; type: "software" | "processes" | "etc" } | null>(null);
+  const investigationResultRef = useRef<HTMLElement | null>(null);
 
   async function load() {
     setState((current) => ({ ...current, loading: true, error: undefined }));
@@ -718,6 +719,13 @@ export default function App() {
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
+
+  useEffect(() => {
+    if (route !== "investigation" || !investigationResult) return;
+    window.setTimeout(() => {
+      investigationResultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+  }, [investigationResult, route]);
 
   useEffect(() => {
     void load();
@@ -1166,7 +1174,12 @@ export default function App() {
 
         {route === "investigation" && (
           <section>
-            <PageTitle title="Investigation" description="원문 링크를 다시 분석해 조사 키워드를 추출하고, Tanium read-only API 기준으로 영향 단말을 확인합니다." badge={`${investigationItems.length} / ${investigationTotal} loaded`} />
+            <PageTitle title="Investigation" description="원문 링크를 다시 분석해 조사 키워드를 추출하고, Tanium read-only API 기준으로 영향 단말을 확인합니다." badge={`${investigationItems.length} / ${investigationTotal} loaded`}>
+              <button type="button" onClick={() => void runSelectedInvestigation()} disabled={Boolean(state.action) || !investigationTarget.itemId}>
+                <Radar size={16} />
+                <span>조사 실행</span>
+              </button>
+            </PageTitle>
             <div className="investigation-layout">
               <article className="page-card investigation-target-card">
                 <header>
@@ -1258,20 +1271,10 @@ export default function App() {
                     더 불러오기
                   </button>
                 </div>
-                <div className="investigation-actions">
-                  <div>
-                    <strong>{selectedInvestigationTitle || "조사 대상을 선택하세요"}</strong>
-                    <span>조사 실행 시 원문 링크 본문을 다시 가져와 분석합니다.</span>
-                  </div>
-                  <button type="button" onClick={() => void runSelectedInvestigation()} disabled={Boolean(state.action) || !investigationTarget.itemId}>
-                    <Radar size={16} />
-                    <span>조사 실행</span>
-                  </button>
-                </div>
               </article>
 
               {investigationResult && (
-                <article className="page-card investigation-result-card">
+                <article ref={investigationResultRef} className="page-card investigation-result-card">
                   <header>
                     <div>
                       <h3>조사 결과</h3>
