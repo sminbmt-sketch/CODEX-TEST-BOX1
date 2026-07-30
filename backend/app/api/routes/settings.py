@@ -3,7 +3,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
-from app.db.models import Article, AuditLog, AutomationSetting, Detection, EmailSetting, EndpointSnapshot, LlmSetting, Source, Vulnerability
+from app.db.models import Article, AuditLog, AutomationSetting, Detection, EmailSetting, EndpointSnapshot, InvestigationRun, LlmSetting, NewsIntelligence, Source, Vulnerability
 from app.db.session import get_db
 from app.schemas import (
     AutomationSettingOut,
@@ -301,6 +301,25 @@ def reset_data(target: str, db: Session = Depends(get_db)) -> DataResetResult:
         raise HTTPException(status_code=400, detail="target must be one of: all, cves, news, inventory")
 
     deleted: dict[str, int] = {}
+    if target in {"all", "cves", "news"}:
+        deleted["investigation_runs"] = _delete_count(
+            db,
+            delete(InvestigationRun).where(
+                InvestigationRun.intelligence_id.in_(
+                    select(NewsIntelligence.id).where(
+                        NewsIntelligence.source_type == ("news" if target == "news" else "cve")
+                    )
+                )
+            )
+            if target in {"cves", "news"}
+            else delete(InvestigationRun),
+        )
+        deleted["news_intelligence"] = _delete_count(
+            db,
+            delete(NewsIntelligence).where(NewsIntelligence.source_type == ("news" if target == "news" else "cve"))
+            if target in {"cves", "news"}
+            else delete(NewsIntelligence),
+        )
     if target in {"all", "cves"}:
         deleted["detections"] = _delete_count(db, delete(Detection))
         deleted["vulnerabilities"] = _delete_count(db, delete(Vulnerability))
