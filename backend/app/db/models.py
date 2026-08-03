@@ -46,6 +46,20 @@ class Article(Base):
     source: Mapped[Source | None] = relationship(back_populates="articles")
 
 
+class EmailMessage(Base):
+    __tablename__ = "email_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    message_id: Mapped[str | None] = mapped_column(Text, unique=True, index=True)
+    sender: Mapped[str | None] = mapped_column(Text, index=True)
+    recipients: Mapped[str | None] = mapped_column(Text)
+    subject: Mapped[str] = mapped_column(Text)
+    body_excerpt: Mapped[str | None] = mapped_column(Text)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    raw_headers: Mapped[dict | list | None] = mapped_column(JsonType)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Vulnerability(Base):
     __tablename__ = "vulnerabilities"
 
@@ -123,6 +137,7 @@ class NewsIntelligence(Base):
     source_type: Mapped[str] = mapped_column(String(32), index=True)
     article_id: Mapped[int | None] = mapped_column(ForeignKey("articles.id"), index=True)
     vulnerability_id: Mapped[int | None] = mapped_column(ForeignKey("vulnerabilities.id"), index=True)
+    email_id: Mapped[int | None] = mapped_column(ForeignKey("email_messages.id"), index=True)
     title: Mapped[str] = mapped_column(Text)
     source_url: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(32), default="ready", index=True)

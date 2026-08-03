@@ -1,16 +1,18 @@
 import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarClock, DatabaseZap, ExternalLink, FileText, Mail, Plus, Radar, RefreshCw, Search, Server, Trash2, Wifi } from "lucide-react";
-import { api, type Article, type AutomationSettings, type CollectionJobStatus, type DashboardSummary, type DataResetTarget, type Detection, type EmailSettings, type EndpointSnapshot, type InvestigationRun, type LlmProvider, type LlmSettings, type Source, type SummaryLogItem, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
+import { api, type Article, type AutomationSettings, type CollectionJobStatus, type DashboardSummary, type DataResetTarget, type Detection, type EmailMessage, type EmailSettings, type EndpointSnapshot, type InvestigationRun, type LlmProvider, type LlmSettings, type Source, type SummaryLogItem, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
 
-type Route = "dashboard" | "cves" | "security-news" | "tanium-inventory" | "investigation" | "reports" | "logs" | "settings";
-type InvestigationTargetType = "news" | "kisa" | "cve";
+type Route = "dashboard" | "cves" | "security-news" | "email" | "tanium-inventory" | "investigation" | "reports" | "logs" | "settings";
+type InvestigationTargetType = "news" | "kisa" | "cve" | "email";
 
 type LoadState = {
   summary?: DashboardSummary;
   vulnerabilities: Vulnerability[];
   articles: Article[];
+  emails: EmailMessage[];
   vulnerabilityTotal: number;
   articleTotal: number;
+  emailTotal: number;
   inventory: EndpointSnapshot[];
   detections: Detection[];
   trends?: TrendReport;
@@ -30,8 +32,10 @@ type LoadState = {
 const emptyState: LoadState = {
   vulnerabilities: [],
   articles: [],
+  emails: [],
   vulnerabilityTotal: 0,
   articleTotal: 0,
+  emailTotal: 0,
   inventory: [],
   detections: [],
   sources: [],
@@ -43,6 +47,7 @@ const navItems: { route: Route; label: string }[] = [
   { route: "dashboard", label: "Dashboard" },
   { route: "cves", label: "CVE" },
   { route: "security-news", label: "Security News" },
+  { route: "email", label: "Email" },
   { route: "tanium-inventory", label: "Tanium Inventory" },
   { route: "investigation", label: "Investigation" },
   { route: "reports", label: "Reports" },
@@ -62,7 +67,7 @@ const llmDefaults: Record<LlmProvider, { baseUrl: string; model: string }> = {
 
 function routeFromHash(): Route {
   const value = window.location.hash.replace(/^#\/?/, "");
-  if (value === "cves" || value === "security-news" || value === "tanium-inventory" || value === "investigation" || value === "reports" || value === "logs" || value === "settings") {
+  if (value === "cves" || value === "security-news" || value === "email" || value === "tanium-inventory" || value === "investigation" || value === "reports" || value === "logs" || value === "settings") {
     return value;
   }
   return "dashboard";
@@ -373,14 +378,21 @@ export default function App() {
   const [newsSearch, setNewsSearch] = useState("");
   const [newsSort, setNewsSort] = useState<"date" | "name">("date");
   const [newsCategory, setNewsCategory] = useState<"news" | "kisa">("news");
+  const [emailPage, setEmailPage] = useState(1);
+  const [emailPageSize, setEmailPageSize] = useState(30);
+  const [emailSearch, setEmailSearch] = useState("");
+  const [emailSender, setEmailSender] = useState("");
+  const [emailSort, setEmailSort] = useState<"date" | "name">("date");
+  const [selectedEmailId, setSelectedEmailId] = useState<number | "">("");
   const [cveSummaryMode, setCveSummaryMode] = useState(false);
   const [newsSummaryMode, setNewsSummaryMode] = useState(false);
   const [selectedCveIds, setSelectedCveIds] = useState<number[]>([]);
   const [selectedArticleIds, setSelectedArticleIds] = useState<number[]>([]);
   const [investigationTarget, setInvestigationTarget] = useState<{ sourceType: InvestigationTargetType; itemId: number | "" }>({ sourceType: "news", itemId: "" });
-  const [investigationItems, setInvestigationItems] = useState<(Article | Vulnerability)[]>([]);
+  const [investigationItems, setInvestigationItems] = useState<(Article | Vulnerability | EmailMessage)[]>([]);
   const [investigationTotal, setInvestigationTotal] = useState(0);
   const [investigationLimit, setInvestigationLimit] = useState(50);
+  const [investigationSearch, setInvestigationSearch] = useState("");
   const [investigationLoading, setInvestigationLoading] = useState(false);
   const [investigationResult, setInvestigationResult] = useState<InvestigationRun | undefined>();
   const [sourceDrafts, setSourceDrafts] = useState<Record<number, { name: string; kind: string; url: string; enabled: boolean }>>({});
@@ -434,12 +446,15 @@ export default function App() {
     try {
       const cveParams = { limit: cvePageSize, offset: (cvePage - 1) * cvePageSize, q: cveSearch.trim() || undefined, sort: cveSort, severity: cveSeverity || undefined };
       const newsParams = { limit: newsPageSize, offset: (newsPage - 1) * newsPageSize, q: newsSearch.trim() || undefined, sort: newsSort, category: newsCategory };
-      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, automation, email, sources, nvdYearJob, epssJob, summaryLogs] = await Promise.all([
+      const emailParams = { limit: emailPageSize, offset: (emailPage - 1) * emailPageSize, q: emailSearch.trim() || undefined, sender: emailSender.trim() || undefined, sort: emailSort };
+      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, emails, emailTotal, tanium, inventory, detections, trends, llm, automation, email, sources, nvdYearJob, epssJob, summaryLogs] = await Promise.all([
         api.summary(),
         api.vulnerabilities(cveParams),
         api.vulnerabilityCount(cveParams),
         api.articles(newsParams),
         api.articleCount(newsParams),
+        api.emails(emailParams),
+        api.emailCount(emailParams),
         api.taniumStatus(),
         api.inventory(),
         api.detections(),
@@ -452,7 +467,7 @@ export default function App() {
         api.epssStatus(),
         api.summaryFailureLogs(),
       ]);
-      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, tanium, inventory, detections, trends, llm, automation, email, nvdYearJob, epssJob, sources, summaryLogs, loading: false });
+      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, emails, emailTotal, tanium, inventory, detections, trends, llm, automation, email, nvdYearJob, epssJob, sources, summaryLogs, loading: false });
       setSourceDrafts(Object.fromEntries(sources.map((source) => [source.id, { name: source.name, kind: source.kind, url: source.url || "", enabled: source.enabled }])));
       setLlmForm((current) => ({
         ...current,
@@ -617,13 +632,27 @@ export default function App() {
     await runAction("News summaries", () => api.summarizeArticles({ days: summaryDays, includeExisting: includeExistingSummaries }));
   }
 
-  async function runSelectedInvestigation() {
-    if (!investigationTarget.itemId) return;
+  async function runEmailCollect() {
+    const sender = emailSender.trim() || emailForm.sender.trim();
+    if (!sender) {
+      setState((current) => ({ ...current, error: "메일 발신자 기준값을 입력해야 합니다." }));
+      return;
+    }
+    await runAction(`Collect email from ${sender}`, () => api.collectEmails(sender, emailPageSize));
+  }
+
+  async function startInvestigation(sourceType: InvestigationTargetType, itemId: number | "") {
+    if (!itemId) return;
+    const requestSourceType = sourceType === "cve" || sourceType === "email" ? sourceType : "news";
+    setInvestigationTarget({ sourceType, itemId });
+    setInvestigationResult(undefined);
+    window.location.hash = "#/investigation";
+    setRoute("investigation");
     setState((current) => ({ ...current, action: "Tanium Investigation", error: undefined }));
     try {
       const run = await api.runInvestigation({
-        source_type: investigationTarget.sourceType === "cve" ? "cve" : "news",
-        item_id: Number(investigationTarget.itemId),
+        source_type: requestSourceType,
+        item_id: Number(itemId),
         refresh_intelligence: true,
       });
       setInvestigationResult(run);
@@ -637,17 +666,27 @@ export default function App() {
     }
   }
 
+  async function runSelectedInvestigation() {
+    if (!investigationTarget.itemId) return;
+    await startInvestigation(investigationTarget.sourceType, investigationTarget.itemId);
+  }
+
   async function loadInvestigationTargets(type = investigationTarget.sourceType, limit = investigationLimit) {
     if (route !== "investigation") return;
     setInvestigationLoading(true);
     try {
-      if (type !== "cve") {
-        const params = { limit, offset: 0, sort: "date" as const, category: type === "kisa" ? "kisa" as const : "news" as const };
+      if (type === "email") {
+        const params = { limit, offset: 0, sort: "date" as const, q: investigationSearch.trim() || undefined };
+        const [items, total] = await Promise.all([api.emails(params), api.emailCount(params)]);
+        setInvestigationItems(items);
+        setInvestigationTotal(total);
+      } else if (type !== "cve") {
+        const params = { limit, offset: 0, sort: "date" as const, category: type === "kisa" ? "kisa" as const : "news" as const, q: investigationSearch.trim() || undefined };
         const [items, total] = await Promise.all([api.articles(params), api.articleCount(params)]);
         setInvestigationItems(items);
         setInvestigationTotal(total);
       } else {
-        const params = { limit, offset: 0, sort: "date" as const };
+        const params = { limit, offset: 0, sort: "date" as const, q: investigationSearch.trim() || undefined };
         const [items, total] = await Promise.all([api.vulnerabilities(params), api.vulnerabilityCount(params)]);
         setInvestigationItems(items);
         setInvestigationTotal(total);
@@ -729,11 +768,11 @@ export default function App() {
 
   useEffect(() => {
     void load();
-  }, [cvePage, cvePageSize, cveSearch, cveSort, cveSeverity, newsPage, newsPageSize, newsSearch, newsSort, newsCategory]);
+  }, [cvePage, cvePageSize, cveSearch, cveSort, cveSeverity, newsPage, newsPageSize, newsSearch, newsSort, newsCategory, emailPage, emailPageSize, emailSearch, emailSender, emailSort]);
 
   useEffect(() => {
     void loadInvestigationTargets();
-  }, [route, investigationTarget.sourceType, investigationLimit]);
+  }, [route, investigationTarget.sourceType, investigationLimit, investigationSearch]);
 
   useEffect(() => {
     setSelectedCveIds([]);
@@ -742,6 +781,10 @@ export default function App() {
   useEffect(() => {
     setSelectedArticleIds([]);
   }, [newsPage, newsPageSize, newsSearch, newsSort, newsCategory]);
+
+  useEffect(() => {
+    setSelectedEmailId("");
+  }, [emailPage, emailPageSize, emailSearch, emailSender, emailSort]);
 
   useEffect(() => {
     const shouldPoll =
@@ -779,11 +822,16 @@ export default function App() {
   const newsSources = state.sources.filter((source) => source.kind !== "vulnerability");
   const visibleCveIds = state.vulnerabilities.map((item) => item.id);
   const visibleArticleIds = state.articles.map((item) => item.id);
+  const firstVisibleCveId = selectedCveIds[0] || visibleCveIds[0] || "";
+  const firstVisibleArticleId = selectedArticleIds[0] || visibleArticleIds[0] || "";
+  const firstVisibleEmailId = selectedEmailId || state.emails[0]?.id || "";
   const dashboardCves = (state.summary?.top_risks || []).slice(0, 10);
   const selectedInvestigationTitle =
-    investigationTarget.sourceType !== "cve"
-      ? (investigationItems.find((item) => item.id === investigationTarget.itemId) as Article | undefined)?.title
-      : (investigationItems.find((item) => item.id === investigationTarget.itemId) as Vulnerability | undefined)?.cve_id;
+    investigationTarget.sourceType === "cve"
+      ? (investigationItems.find((item) => item.id === investigationTarget.itemId) as Vulnerability | undefined)?.cve_id
+      : investigationTarget.sourceType === "email"
+        ? (investigationItems.find((item) => item.id === investigationTarget.itemId) as EmailMessage | undefined)?.subject
+        : (investigationItems.find((item) => item.id === investigationTarget.itemId) as Article | undefined)?.title;
 
   return (
     <main className="ops-app">
@@ -884,6 +932,10 @@ export default function App() {
                 badge={`${state.summary?.vulnerability_count ?? state.vulnerabilities.length} CVEs`}
                 tone="critical"
               >
+                <button type="button" onClick={() => void startInvestigation("cve", firstVisibleCveId)} disabled={Boolean(state.action) || !firstVisibleCveId}>
+                  <Radar size={16} />
+                  <span>조사 실행</span>
+                </button>
                 <button type="button" onClick={() => setCveSummaryMode((value) => !value)} disabled={Boolean(state.action)}>
                   Summarize
                 </button>
@@ -1013,6 +1065,10 @@ export default function App() {
                 description="수집한 보안 뉴스와 KISA 보안 공지를 분리해서 확인합니다."
                 badge={`${state.articleTotal} ${newsCategory === "kisa" ? "KISA notices" : "news"}`}
               >
+                <button type="button" onClick={() => void startInvestigation(newsCategory, firstVisibleArticleId)} disabled={Boolean(state.action) || !firstVisibleArticleId}>
+                  <Radar size={16} />
+                  <span>조사 실행</span>
+                </button>
                 <button type="button" onClick={() => setNewsSummaryMode((value) => !value)} disabled={Boolean(state.action)}>
                   Summarize
                 </button>
@@ -1130,6 +1186,102 @@ export default function App() {
           </section>
         )}
 
+        {route === "email" && (
+          <section>
+            <div className="sticky-list-header">
+              <PageTitle
+                title="Email"
+                description="발신자 기준으로 가져온 메일 목록을 확인하고 보안 조사 대상으로 연결합니다."
+                badge={`${state.emailTotal} emails`}
+              >
+                <button type="button" onClick={() => void runEmailCollect()} disabled={Boolean(state.action) || !(emailSender.trim() || emailForm.sender.trim())}>
+                  <Mail size={16} />
+                  <span>메일 가져오기</span>
+                </button>
+                <button type="button" onClick={() => void startInvestigation("email", firstVisibleEmailId)} disabled={Boolean(state.action) || !firstVisibleEmailId}>
+                  <Radar size={16} />
+                  <span>조사 실행</span>
+                </button>
+              </PageTitle>
+              <ListToolbar>
+                <ListControls
+                  search={emailSearch}
+                  searchLabel="메일 검색"
+                  sort={emailSort}
+                  onSearchChange={(value) => {
+                    setEmailSearch(value);
+                    setEmailPage(1);
+                  }}
+                  onSortChange={(value) => {
+                    setEmailSort(value);
+                    setEmailPage(1);
+                  }}
+                />
+                <label className="sort-field email-sender-field">
+                  발신자
+                  <input
+                    value={emailSender}
+                    onChange={(event) => {
+                      setEmailSender(event.target.value);
+                      setEmailPage(1);
+                    }}
+                    placeholder="sender@example.com"
+                  />
+                </label>
+                <Pager
+                  page={emailPage}
+                  pageSize={emailPageSize}
+                  total={state.emailTotal}
+                  onPageChange={setEmailPage}
+                  onPageSizeChange={(value) => {
+                    setEmailPageSize(value);
+                    setEmailPage(1);
+                  }}
+                />
+              </ListToolbar>
+            </div>
+            <div className="page-grid">
+              {state.emails.map((message) => (
+                <article
+                  key={message.id}
+                  className={selectedEmailId === message.id ? "page-card email-card selected" : "page-card email-card"}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedEmailId(message.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedEmailId(message.id);
+                    }
+                  }}
+                >
+                  <header>
+                    <div>
+                      <h3>{message.subject}</h3>
+                      <p>{message.sender || "Unknown sender"} · {formatDate(message.received_at || message.created_at)}</p>
+                    </div>
+                    <div className="badge-stack">
+                      <span className="pill neutral">email</span>
+                      {selectedEmailId === message.id && <span className="pill ok">선택됨</span>}
+                    </div>
+                  </header>
+                  <div className="body">
+                    <article className="post">
+                      <h4>본문 일부</h4>
+                      <p>{message.body_excerpt || "본문을 불러오지 못했습니다."}</p>
+                      <div className="meta">
+                        {message.recipients && <span>To: {message.recipients}</span>}
+                        <span>{message.message_id || "No Message-ID"}</span>
+                      </div>
+                    </article>
+                  </div>
+                </article>
+              ))}
+              {!state.emails.length && <div className="empty block">No email data</div>}
+            </div>
+          </section>
+        )}
+
         {route === "tanium-inventory" && (
           <section>
             <PageTitle title="Tanium Inventory" description="Tanium API로 수집한 단말, 설치 프로그램, 실행 프로세스 정보를 제공합니다." badge={`${state.summary?.endpoint_count ?? state.inventory.length} endpoints`} tone="ok" />
@@ -1223,17 +1375,40 @@ export default function App() {
                   >
                     CVE
                   </button>
+                  <button
+                    type="button"
+                    className={investigationTarget.sourceType === "email" ? "active" : undefined}
+                    onClick={() => {
+                      setInvestigationTarget({ sourceType: "email", itemId: "" });
+                      setInvestigationLimit(50);
+                      setInvestigationResult(undefined);
+                    }}
+                  >
+                    E-mail
+                  </button>
+                </div>
+                <div className="investigation-search">
+                  <Search size={16} />
+                  <input
+                    value={investigationSearch}
+                    onChange={(event) => setInvestigationSearch(event.target.value)}
+                    placeholder="조사 대상 검색"
+                  />
                 </div>
                 <div className="investigation-list" role="list">
                   {investigationItems.map((item) => {
-                    const isArticleTarget = investigationTarget.sourceType !== "cve";
+                    const isArticleTarget = investigationTarget.sourceType === "news" || investigationTarget.sourceType === "kisa";
+                    const isEmailTarget = investigationTarget.sourceType === "email";
                     const article = isArticleTarget ? (item as Article) : undefined;
-                    const cve = !isArticleTarget ? (item as Vulnerability) : undefined;
-                    const title = article?.title || cve?.cve_id || "Untitled";
+                    const email = isEmailTarget ? (item as EmailMessage) : undefined;
+                    const cve = !isArticleTarget && !isEmailTarget ? (item as Vulnerability) : undefined;
+                    const title = article?.title || email?.subject || cve?.cve_id || "Untitled";
                     const subtitle = article
                       ? `${article.source?.name || "Security News"} · ${formatDate(article.published_at)}`
+                      : email
+                        ? `${email.sender || "Unknown sender"} · ${formatDate(email.received_at || email.created_at)}`
                       : `${cve?.cvss_severity || "N/A"} · ${formatDate(cve?.published_at)}`;
-                    const summary = article ? articleDisplay(article).summary : vulnerabilitySummary(cve as Vulnerability);
+                    const summary = article ? articleDisplay(article).summary : email ? email.body_excerpt || "메일 본문 확인이 필요합니다." : vulnerabilitySummary(cve as Vulnerability);
                     const selectTarget = () => {
                       setInvestigationTarget((current) => ({ ...current, itemId: item.id }));
                       setInvestigationResult(undefined);

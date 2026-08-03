@@ -51,6 +51,30 @@ class ArticleOut(BaseModel):
     source: SourceOut | None = None
 
 
+class EmailMessageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    message_id: str | None = None
+    sender: str | None = None
+    recipients: str | None = None
+    subject: str
+    body_excerpt: str | None = None
+    received_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+class EmailCollectionRequest(BaseModel):
+    sender: str = Field(min_length=1, max_length=255)
+    limit: int = Field(default=50, ge=1, le=500)
+
+
+class EmailCollectionResult(BaseModel):
+    fetched: int = 0
+    created_or_updated: int = 0
+    errors: list[str] = Field(default_factory=list)
+
+
 class VulnerabilityOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -157,6 +181,7 @@ class IntelligenceOut(BaseModel):
     source_type: str
     article_id: int | None = None
     vulnerability_id: int | None = None
+    email_id: int | None = None
     title: str
     source_url: str | None = None
     status: str
@@ -168,7 +193,7 @@ class IntelligenceOut(BaseModel):
 
 
 class InvestigationRequest(BaseModel):
-    source_type: Literal["news", "cve"]
+    source_type: Literal["news", "cve", "email"]
     item_id: int
     refresh_intelligence: bool = False
 

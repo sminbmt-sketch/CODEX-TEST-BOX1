@@ -31,6 +31,7 @@ def _ensure_schema() -> None:
     article_columns = {column["name"] for column in inspector.get_columns("articles")} if "articles" in table_names else set()
     endpoint_columns = {column["name"] for column in inspector.get_columns("endpoint_snapshots")} if "endpoint_snapshots" in table_names else set()
     source_columns = {column["name"] for column in inspector.get_columns("sources")} if "sources" in table_names else set()
+    intelligence_columns = {column["name"] for column in inspector.get_columns("news_intelligence")} if "news_intelligence" in table_names else set()
     with engine.begin() as connection:
         if "enabled" not in source_columns:
             connection.execute(text("ALTER TABLE sources ADD COLUMN enabled BOOLEAN DEFAULT TRUE"))
@@ -68,6 +69,8 @@ def _ensure_schema() -> None:
             connection.execute(text("ALTER TABLE endpoint_snapshots ADD COLUMN ports JSON"))
         if "sbom" not in endpoint_columns:
             connection.execute(text("ALTER TABLE endpoint_snapshots ADD COLUMN sbom JSON"))
+        if "email_id" not in intelligence_columns:
+            connection.execute(text("ALTER TABLE news_intelligence ADD COLUMN email_id INTEGER"))
 
 
 def get_db() -> Generator[Session, None, None]:

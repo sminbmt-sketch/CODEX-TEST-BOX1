@@ -17,7 +17,7 @@ def tanium_capabilities() -> dict:
 
 @router.get("/intelligence", response_model=list[IntelligenceOut])
 def list_intelligence(
-    source_type: str | None = Query(default=None, pattern="^(news|cve)$"),
+    source_type: str | None = Query(default=None, pattern="^(news|cve|email)$"),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
 ) -> list[IntelligenceOut]:

@@ -425,6 +425,23 @@ button:disabled {
   justify-content: flex-end;
 }
 
+.email-sender-field {
+  min-width: 240px;
+}
+
+.email-sender-field input {
+  min-width: 220px;
+}
+
+.email-card {
+  cursor: pointer;
+}
+
+.email-card.selected {
+  border-color: #1aa3b8;
+  box-shadow: inset 3px 0 0 #1aa3b8;
+}
+
 .segmented {
   display: inline-flex;
   gap: 4px;
@@ -896,6 +913,27 @@ button:disabled {
 
 .investigation-tabs {
   margin: 14px;
+}
+
+.investigation-search {
+  align-items: center;
+  background: #0d151e;
+  border: 1px solid #263240;
+  border-radius: 7px;
+  color: #8f9dab;
+  display: flex;
+  gap: 8px;
+  margin: 0 14px 12px;
+  padding: 8px 10px;
+}
+
+.investigation-search input {
+  background: transparent;
+  border: 0;
+  color: #dce7f0;
+  flex: 1;
+  min-width: 0;
+  outline: none;
 }
 
 .investigation-form {

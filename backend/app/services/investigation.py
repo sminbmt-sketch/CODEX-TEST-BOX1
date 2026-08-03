@@ -10,7 +10,7 @@ import httpx
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Article, EndpointSnapshot, InvestigationRun, NewsIntelligence, Vulnerability
+from app.db.models import Article, EmailMessage, EndpointSnapshot, InvestigationRun, NewsIntelligence, Vulnerability
 from app.services.llm import SummaryService, resolve_llm_config, sanitize_llm_error
 
 
@@ -130,7 +130,7 @@ class _ArticleTextParser(HTMLParser):
 
 NEWS_INTELLIGENCE_SCHEMA = {
     "content": {
-        "source_type": "news|cve",
+        "source_type": "news|cve|email",
         "title": "원문 제목",
         "risk": "low|medium|high|critical|unknown",
         "summary": "한국어 조사 요약",
@@ -439,13 +439,19 @@ def _relevant_cves(text: str, product_names: list[str]) -> list[str]:
     return _unique(relevant)
 
 
-def _source_payload(db: Session, source_type: str, item_id: int) -> tuple[str, str, str | None, Article | Vulnerability]:
+def _source_payload(db: Session, source_type: str, item_id: int) -> tuple[str, str, str | None, Article | Vulnerability | EmailMessage]:
     if source_type == "news":
         article = db.get(Article, item_id)
         if article is None:
             raise ValueError("News item not found")
         body = "\n".join(value for value in (article.title, article.summary, article.raw_excerpt) if value)
         return article.title, body, article.url, article
+    if source_type == "email":
+        email = db.get(EmailMessage, item_id)
+        if email is None:
+            raise ValueError("Email item not found")
+        body = "\n".join(value for value in (email.subject, email.sender, email.body_excerpt) if value)
+        return email.subject, body, None, email
     vulnerability = db.get(Vulnerability, item_id)
     if vulnerability is None:
         raise ValueError("CVE item not found")
@@ -709,6 +715,7 @@ async def build_intelligence(db: Session, source_type: str, item_id: int, refres
             NewsIntelligence.source_type == source_type,
             NewsIntelligence.article_id == (item_id if source_type == "news" else None),
             NewsIntelligence.vulnerability_id == (item_id if source_type == "cve" else None),
+            NewsIntelligence.email_id == (item_id if source_type == "email" else None),
         )
     )
     if existing is not None and not refresh:
@@ -776,6 +783,7 @@ async def build_intelligence(db: Session, source_type: str, item_id: int, refres
     row = existing or NewsIntelligence(source_type=source_type)
     row.article_id = source.id if source_type == "news" else None
     row.vulnerability_id = source.id if source_type == "cve" else None
+    row.email_id = source.id if source_type == "email" else None
     row.title = title
     row.source_url = source_url
     row.status = "ready"

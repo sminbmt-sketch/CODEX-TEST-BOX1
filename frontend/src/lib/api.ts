@@ -41,6 +41,17 @@ export type Article = {
   source?: Source | null;
 };
 
+export type EmailMessage = {
+  id: number;
+  message_id?: string | null;
+  sender?: string | null;
+  recipients?: string | null;
+  subject: string;
+  body_excerpt?: string | null;
+  received_at?: string | null;
+  created_at?: string | null;
+};
+
 export type Vulnerability = {
   id: number;
   cve_id: string;
@@ -240,9 +251,10 @@ export type SummaryLogItem = {
 
 export type IntelligenceItem = {
   id: number;
-  source_type: "news" | "cve";
+  source_type: "news" | "cve" | "email";
   article_id?: number | null;
   vulnerability_id?: number | null;
+  email_id?: number | null;
   title: string;
   source_url?: string | null;
   status: string;
@@ -256,7 +268,7 @@ export type IntelligenceItem = {
 export type InvestigationRun = {
   id: number;
   intelligence_id: number;
-  source_type: "news" | "cve";
+  source_type: "news" | "cve" | "email";
   source_title: string;
   status: string;
   query_plan?: unknown;
@@ -267,7 +279,7 @@ export type InvestigationRun = {
 };
 
 export type InvestigationRequest = {
-  source_type: "news" | "cve";
+  source_type: "news" | "cve" | "email";
   item_id: number;
   refresh_intelligence?: boolean;
 };
@@ -279,6 +291,7 @@ type ListParams = {
   sort?: "date" | "name";
   severity?: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
   category?: "news" | "kisa";
+  sender?: string;
 };
 
 type SummaryParams = {
@@ -307,6 +320,7 @@ function listQuery(params?: ListParams) {
   if (params?.sort) search.set("sort", params.sort);
   if (params?.severity) search.set("severity", params.severity);
   if (params?.category) search.set("category", params.category);
+  if (params?.sender) search.set("sender", params.sender);
   const query = search.toString();
   return query ? `?${query}` : "";
 }
@@ -359,6 +373,13 @@ export const api = {
   vulnerabilityCount: (params?: ListParams) => request<number>(`/api/vulnerabilities/count${listQuery(params)}`),
   articles: (params?: ListParams) => request<Article[]>(`/api/articles${listQuery(params ?? { limit: 25 })}`),
   articleCount: (params?: ListParams) => request<number>(`/api/articles/count${listQuery(params)}`),
+  emails: (params?: ListParams) => request<EmailMessage[]>(`/api/emails${listQuery(params ?? { limit: 25 })}`),
+  emailCount: (params?: ListParams) => request<number>(`/api/emails/count${listQuery(params)}`),
+  collectEmails: (sender: string, limit = 50) =>
+    request<{ fetched: number; created_or_updated: number; errors: string[] }>("/api/emails/collect", {
+      method: "POST",
+      body: JSON.stringify({ sender, limit }),
+    }),
   taniumStatus: () => request<TaniumStatus>("/api/tanium/status"),
   llmSettings: () => request<LlmSettings>("/api/settings/llm"),
   automationSettings: () => request<AutomationSettings>("/api/settings/automation"),
