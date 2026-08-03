@@ -386,8 +386,13 @@ export default function App() {
   const [selectedEmailId, setSelectedEmailId] = useState<number | "">("");
   const [cveSummaryMode, setCveSummaryMode] = useState(false);
   const [newsSummaryMode, setNewsSummaryMode] = useState(false);
+  const [cveInvestigationMode, setCveInvestigationMode] = useState(false);
+  const [newsInvestigationMode, setNewsInvestigationMode] = useState(false);
+  const [emailInvestigationMode, setEmailInvestigationMode] = useState(false);
   const [selectedCveIds, setSelectedCveIds] = useState<number[]>([]);
   const [selectedArticleIds, setSelectedArticleIds] = useState<number[]>([]);
+  const [selectedInvestigationCveId, setSelectedInvestigationCveId] = useState<number | "">("");
+  const [selectedInvestigationArticleId, setSelectedInvestigationArticleId] = useState<number | "">("");
   const [investigationTarget, setInvestigationTarget] = useState<{ sourceType: InvestigationTargetType; itemId: number | "" }>({ sourceType: "news", itemId: "" });
   const [investigationItems, setInvestigationItems] = useState<(Article | Vulnerability | EmailMessage)[]>([]);
   const [investigationTotal, setInvestigationTotal] = useState(0);
@@ -666,6 +671,37 @@ export default function App() {
     }
   }
 
+  async function runCveInvestigationAction() {
+    if (!cveInvestigationMode) {
+      setCveSummaryMode(false);
+      setSelectedCveIds([]);
+      setCveInvestigationMode(true);
+      setSelectedInvestigationCveId("");
+      return;
+    }
+    await startInvestigation("cve", selectedInvestigationCveId);
+  }
+
+  async function runNewsInvestigationAction() {
+    if (!newsInvestigationMode) {
+      setNewsSummaryMode(false);
+      setSelectedArticleIds([]);
+      setNewsInvestigationMode(true);
+      setSelectedInvestigationArticleId("");
+      return;
+    }
+    await startInvestigation(newsCategory, selectedInvestigationArticleId);
+  }
+
+  async function runEmailInvestigationAction() {
+    if (!emailInvestigationMode) {
+      setEmailInvestigationMode(true);
+      setSelectedEmailId("");
+      return;
+    }
+    await startInvestigation("email", selectedEmailId);
+  }
+
   async function runSelectedInvestigation() {
     if (!investigationTarget.itemId) return;
     await startInvestigation(investigationTarget.sourceType, investigationTarget.itemId);
@@ -776,10 +812,12 @@ export default function App() {
 
   useEffect(() => {
     setSelectedCveIds([]);
+    setSelectedInvestigationCveId("");
   }, [cvePage, cvePageSize, cveSearch, cveSort, cveSeverity]);
 
   useEffect(() => {
     setSelectedArticleIds([]);
+    setSelectedInvestigationArticleId("");
   }, [newsPage, newsPageSize, newsSearch, newsSort, newsCategory]);
 
   useEffect(() => {
@@ -822,9 +860,6 @@ export default function App() {
   const newsSources = state.sources.filter((source) => source.kind !== "vulnerability");
   const visibleCveIds = state.vulnerabilities.map((item) => item.id);
   const visibleArticleIds = state.articles.map((item) => item.id);
-  const firstVisibleCveId = selectedCveIds[0] || visibleCveIds[0] || "";
-  const firstVisibleArticleId = selectedArticleIds[0] || visibleArticleIds[0] || "";
-  const firstVisibleEmailId = selectedEmailId || state.emails[0]?.id || "";
   const dashboardCves = (state.summary?.top_risks || []).slice(0, 10);
   const selectedInvestigationTitle =
     investigationTarget.sourceType === "cve"
@@ -932,11 +967,16 @@ export default function App() {
                 badge={`${state.summary?.vulnerability_count ?? state.vulnerabilities.length} CVEs`}
                 tone="critical"
               >
-                <button type="button" onClick={() => void startInvestigation("cve", firstVisibleCveId)} disabled={Boolean(state.action) || !firstVisibleCveId}>
+                <button type="button" onClick={() => void runCveInvestigationAction()} disabled={Boolean(state.action) || !state.vulnerabilities.length || (cveInvestigationMode && !selectedInvestigationCveId)}>
                   <Radar size={16} />
-                  <span>조사 실행</span>
+                  <span>{cveInvestigationMode ? "선택 항목 조사" : "조사 실행"}</span>
                 </button>
-                <button type="button" onClick={() => setCveSummaryMode((value) => !value)} disabled={Boolean(state.action)}>
+                {cveInvestigationMode && (
+                  <button type="button" onClick={() => { setCveInvestigationMode(false); setSelectedInvestigationCveId(""); }} disabled={Boolean(state.action)}>
+                    취소
+                  </button>
+                )}
+                <button type="button" onClick={() => setCveSummaryMode((value) => !value)} disabled={Boolean(state.action) || cveInvestigationMode}>
                   Summarize
                 </button>
               </PageTitle>
@@ -986,8 +1026,19 @@ export default function App() {
             </div>
             <div className="page-grid">
               {state.vulnerabilities.map((item) => (
-                <article key={item.id} className={cveSummaryMode ? "page-card selectable-card" : "page-card"}>
-                  {cveSummaryMode && (
+                <article key={item.id} className={(cveSummaryMode || cveInvestigationMode) ? "page-card selectable-card" : "page-card"}>
+                  {cveInvestigationMode && (
+                    <label className="select-check investigation-check">
+                      <input
+                        type="radio"
+                        name="cve-investigation-target"
+                        checked={selectedInvestigationCveId === item.id}
+                        onChange={() => setSelectedInvestigationCveId(item.id)}
+                      />
+                      조사 대상
+                    </label>
+                  )}
+                  {cveSummaryMode && !cveInvestigationMode && (
                     <label className="select-check">
                       <input
                         type="checkbox"
@@ -1065,11 +1116,16 @@ export default function App() {
                 description="수집한 보안 뉴스와 KISA 보안 공지를 분리해서 확인합니다."
                 badge={`${state.articleTotal} ${newsCategory === "kisa" ? "KISA notices" : "news"}`}
               >
-                <button type="button" onClick={() => void startInvestigation(newsCategory, firstVisibleArticleId)} disabled={Boolean(state.action) || !firstVisibleArticleId}>
+                <button type="button" onClick={() => void runNewsInvestigationAction()} disabled={Boolean(state.action) || !state.articles.length || (newsInvestigationMode && !selectedInvestigationArticleId)}>
                   <Radar size={16} />
-                  <span>조사 실행</span>
+                  <span>{newsInvestigationMode ? "선택 항목 조사" : "조사 실행"}</span>
                 </button>
-                <button type="button" onClick={() => setNewsSummaryMode((value) => !value)} disabled={Boolean(state.action)}>
+                {newsInvestigationMode && (
+                  <button type="button" onClick={() => { setNewsInvestigationMode(false); setSelectedInvestigationArticleId(""); }} disabled={Boolean(state.action)}>
+                    취소
+                  </button>
+                )}
+                <button type="button" onClick={() => setNewsSummaryMode((value) => !value)} disabled={Boolean(state.action) || newsInvestigationMode}>
                   Summarize
                 </button>
               </PageTitle>
@@ -1125,8 +1181,19 @@ export default function App() {
               {state.articles.map((article) => {
                 const display = articleDisplay(article);
                 return (
-                  <article key={article.id} className={newsSummaryMode ? "page-card selectable-card" : "page-card"}>
-                    {newsSummaryMode && (
+                  <article key={article.id} className={(newsSummaryMode || newsInvestigationMode) ? "page-card selectable-card" : "page-card"}>
+                    {newsInvestigationMode && (
+                      <label className="select-check investigation-check">
+                        <input
+                          type="radio"
+                          name="news-investigation-target"
+                          checked={selectedInvestigationArticleId === article.id}
+                          onChange={() => setSelectedInvestigationArticleId(article.id)}
+                        />
+                        조사 대상
+                      </label>
+                    )}
+                    {newsSummaryMode && !newsInvestigationMode && (
                       <label className="select-check">
                         <input
                           type="checkbox"
@@ -1198,10 +1265,15 @@ export default function App() {
                   <Mail size={16} />
                   <span>메일 가져오기</span>
                 </button>
-                <button type="button" onClick={() => void startInvestigation("email", firstVisibleEmailId)} disabled={Boolean(state.action) || !firstVisibleEmailId}>
+                <button type="button" onClick={() => void runEmailInvestigationAction()} disabled={Boolean(state.action) || !state.emails.length || (emailInvestigationMode && !selectedEmailId)}>
                   <Radar size={16} />
-                  <span>조사 실행</span>
+                  <span>{emailInvestigationMode ? "선택 항목 조사" : "조사 실행"}</span>
                 </button>
+                {emailInvestigationMode && (
+                  <button type="button" onClick={() => { setEmailInvestigationMode(false); setSelectedEmailId(""); }} disabled={Boolean(state.action)}>
+                    취소
+                  </button>
+                )}
               </PageTitle>
               <ListToolbar>
                 <ListControls
@@ -1244,17 +1316,30 @@ export default function App() {
               {state.emails.map((message) => (
                 <article
                   key={message.id}
-                  className={selectedEmailId === message.id ? "page-card email-card selected" : "page-card email-card"}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setSelectedEmailId(message.id)}
+                  className={emailInvestigationMode && selectedEmailId === message.id ? "page-card email-card selectable-card selected" : emailInvestigationMode ? "page-card email-card selectable-card" : "page-card email-card"}
+                  role={emailInvestigationMode ? "button" : undefined}
+                  tabIndex={emailInvestigationMode ? 0 : undefined}
+                  onClick={() => {
+                    if (emailInvestigationMode) setSelectedEmailId(message.id);
+                  }}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
+                    if (emailInvestigationMode && (event.key === "Enter" || event.key === " ")) {
                       event.preventDefault();
                       setSelectedEmailId(message.id);
                     }
                   }}
                 >
+                  {emailInvestigationMode && (
+                    <label className="select-check investigation-check">
+                      <input
+                        type="radio"
+                        name="email-investigation-target"
+                        checked={selectedEmailId === message.id}
+                        onChange={() => setSelectedEmailId(message.id)}
+                      />
+                      조사 대상
+                    </label>
+                  )}
                   <header>
                     <div>
                       <h3>{message.subject}</h3>
@@ -1262,7 +1347,7 @@ export default function App() {
                     </div>
                     <div className="badge-stack">
                       <span className="pill neutral">email</span>
-                      {selectedEmailId === message.id && <span className="pill ok">선택됨</span>}
+                      {emailInvestigationMode && selectedEmailId === message.id && <span className="pill ok">선택됨</span>}
                     </div>
                   </header>
                   <div className="body">
