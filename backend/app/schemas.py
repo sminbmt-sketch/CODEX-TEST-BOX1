@@ -192,6 +192,39 @@ class IntelligenceOut(BaseModel):
     updated_at: datetime | None = None
 
 
+class IntelligenceEntityOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    intelligence_id: int
+    source_type: str
+    article_id: int | None = None
+    vulnerability_id: int | None = None
+    email_id: int | None = None
+    entity_type: str
+    value: str
+    confidence: float
+    attributes: dict | list | None = None
+    created_at: datetime | None = None
+
+
+class IntelligenceIocOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    intelligence_id: int
+    source_type: str
+    article_id: int | None = None
+    vulnerability_id: int | None = None
+    email_id: int | None = None
+    ioc_type: str
+    value: str
+    context: str | None = None
+    confidence: float
+    attributes: dict | list | None = None
+    created_at: datetime | None = None
+
+
 class InvestigationRequest(BaseModel):
     source_type: Literal["news", "cve", "email"]
     item_id: int

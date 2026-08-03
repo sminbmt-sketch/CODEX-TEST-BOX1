@@ -3,7 +3,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
-from app.db.models import Article, AuditLog, AutomationSetting, Detection, EmailSetting, EndpointSnapshot, InvestigationRun, LlmSetting, NewsIntelligence, Source, Vulnerability
+from app.db.models import Article, AuditLog, AutomationSetting, Detection, EmailSetting, EndpointSnapshot, IntelligenceEntity, IntelligenceIoc, InvestigationRun, LlmSetting, NewsIntelligence, Source, Vulnerability
 from app.db.session import get_db
 from app.schemas import (
     AutomationSettingOut,
@@ -313,6 +313,21 @@ def reset_data(target: str, db: Session = Depends(get_db)) -> DataResetResult:
             )
             if target in {"cves", "news"}
             else delete(InvestigationRun),
+        )
+        scoped_intelligence_ids = select(NewsIntelligence.id).where(
+            NewsIntelligence.source_type == ("news" if target == "news" else "cve")
+        )
+        deleted["intelligence_entities"] = _delete_count(
+            db,
+            delete(IntelligenceEntity).where(IntelligenceEntity.intelligence_id.in_(scoped_intelligence_ids))
+            if target in {"cves", "news"}
+            else delete(IntelligenceEntity),
+        )
+        deleted["intelligence_iocs"] = _delete_count(
+            db,
+            delete(IntelligenceIoc).where(IntelligenceIoc.intelligence_id.in_(scoped_intelligence_ids))
+            if target in {"cves", "news"}
+            else delete(IntelligenceIoc),
         )
         deleted["news_intelligence"] = _delete_count(
             db,

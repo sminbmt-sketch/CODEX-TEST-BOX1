@@ -69,7 +69,7 @@ def _ensure_schema() -> None:
             connection.execute(text("ALTER TABLE endpoint_snapshots ADD COLUMN ports JSON"))
         if "sbom" not in endpoint_columns:
             connection.execute(text("ALTER TABLE endpoint_snapshots ADD COLUMN sbom JSON"))
-        if "email_id" not in intelligence_columns:
+        if "news_intelligence" in table_names and "email_id" not in intelligence_columns:
             connection.execute(text("ALTER TABLE news_intelligence ADD COLUMN email_id INTEGER"))
 
 

@@ -7,10 +7,10 @@ from html.parser import HTMLParser
 from typing import Any
 
 import httpx
-from sqlalchemy import or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Article, EmailMessage, EndpointSnapshot, InvestigationRun, NewsIntelligence, Vulnerability
+from app.db.models import Article, EmailMessage, EndpointSnapshot, IntelligenceEntity, IntelligenceIoc, InvestigationRun, NewsIntelligence, Vulnerability
 from app.services.llm import SummaryService, resolve_llm_config, sanitize_llm_error
 
 
@@ -22,6 +22,7 @@ DOMAIN_RE = re.compile(r"\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b", re.IGNORECASE)
 HASH_RE = re.compile(r"\b[a-f0-9]{32,64}\b", re.IGNORECASE)
 PROCESS_RE = re.compile(r"\b[a-z0-9_.-]+\.(?:exe|dll|ps1|sh|bat|cmd|jar|py)\b", re.IGNORECASE)
 VERSION_RE = re.compile(r"\b\d+(?:\.\d+){1,4}\b")
+PORT_RE = re.compile(r"(?:(?:port|ports|tcp|udp|포트)\s*[:#]?\s*|:)(\d{1,5})\b", re.IGNORECASE)
 PRODUCT_BEFORE_VERSION_RE = re.compile(
     r"([A-Z][A-Za-z0-9+()./' -]{2,120})\s+before\s+(?:versions?\s+)?([0-9][0-9A-Za-z./-]*(?:\s*,\s*[0-9][0-9A-Za-z./-]*)*(?:\s*,?\s*and\s*[0-9][0-9A-Za-z./-]*)?)",
     re.IGNORECASE,
@@ -157,6 +158,7 @@ NEWS_INTELLIGENCE_SCHEMA = {
             "domain": ["Domain indicators; retained in report unless network telemetry is added"],
             "hash": ["Hash indicators; retained in report unless file telemetry is added"],
             "file": ["File indicators; compared with process/software names when possible"],
+            "port": ["Port indicators; compared with collected Open Port sensor values"],
         },
     },
     "recommended_actions": ["조사자가 확인해야 하는 대응 방향"],
@@ -172,7 +174,7 @@ COMPACT_NEWS_INTELLIGENCE_SCHEMA = {
         "services": [],
         "os": [],
         "cve": [],
-        "ioc": {"ip": [], "domain": [], "hash": [], "file": []},
+        "ioc": {"ip": [], "domain": [], "hash": [], "file": [], "port": []},
     },
     "recommended_actions": [],
 }
@@ -214,6 +216,29 @@ TANIUM_CAPABILITIES = {
                 "sensor": "Running Processes",
                 "fields": ["endpoints.id", "sensorReadings.columns.name", "sensorReadings.columns.values"],
             },
+            {
+                "name": "Services Inventory",
+                "purpose": "단말별 서비스 이름, 표시 이름, 상태, 시작 유형 조회",
+                "method": "query",
+                "graphql_operation": "SecureWatchEndpointInventory",
+                "fields": ["services.name", "services.displayName", "services.status", "services.startupMode"],
+            },
+            {
+                "name": "Open Ports Sensor",
+                "purpose": "단말별 수집된 listening/open port 센서 결과 조회",
+                "method": "query",
+                "graphql_operation": "SecureWatchEndpointSensorReadings",
+                "sensor": "Open Port | Open Ports | Listening Ports",
+                "fields": ["endpoints.id", "sensorReadings.columns.name", "sensorReadings.columns.values"],
+            },
+            {
+                "name": "Endpoint Hardware and OS Evidence",
+                "purpose": "MAC, OS build/kernel, chassis type, virtualization evidence 조회",
+                "method": "query/rest_read_only",
+                "graphql_operation": "SecureWatchEndpointSensorReadings",
+                "sensors": ["MAC Address", "Windows-Operating System Build Number", "Chassis Type", "Is Virtual"],
+                "rest_question": "Get Computer Name and Kernel Version from all machines",
+            },
         ],
         "query_inputs": {
             "software": "installedApplications.name/version에서 부분 일치 검색",
@@ -222,7 +247,12 @@ TANIUM_CAPABILITIES = {
             "services": "services.name/displayName에서 부분 일치 검색",
             "os": "os.name/generation/platform에서 부분 일치 검색",
             "ip": "endpoint ipAddress에서 부분 일치 검색",
+            "port": "Open Port 센서 결과에서 부분 일치 검색",
+            "file": "현재는 process/software 이름과 비교하고, 전용 File Exists 센서 확장 시 read-only question으로 전환",
+            "hash": "현재는 IOC로 저장하고, Running Processes with Hash/File Hash 센서 확장 시 비교",
+            "domain": "현재는 IOC로 저장하고, Established Connections/DNS telemetry 연동 시 비교",
         },
+        "normalized_outputs": ["intelligence_entities", "intelligence_iocs", "investigation_runs.results.tanium_evidence"],
         "blocked_operations": ["mutation", "process_kill", "file_delete", "package_deploy", "endpoint_control"],
     },
     "execution_policy": "LLM은 조사 계획과 증거 기반 판정을 수행합니다. Tanium API 실행은 backend allowlist와 read-only query로 제한됩니다.",
@@ -272,6 +302,18 @@ def _extract_ips(text: str) -> list[str]:
             continue
         values.append(match.group(0))
     return _unique(values)
+
+
+def _extract_ports(text: str) -> list[str]:
+    ports: list[str] = []
+    for value in PORT_RE.findall(text):
+        try:
+            number = int(value)
+        except ValueError:
+            continue
+        if 1 <= number <= 65535:
+            ports.append(str(number))
+    return _unique(ports)
 
 
 def _tokens(text: str) -> list[str]:
@@ -539,6 +581,7 @@ def _rules_intelligence(source_type: str, title: str, body: str, source_url: str
                 "domain": _unique([value for value in DOMAIN_RE.findall(text) if "nvd.nist.gov" not in value.lower()]),
                 "hash": _unique(HASH_RE.findall(text)),
                 "file": files,
+                "port": _extract_ports(text),
             },
         },
         "recommended_actions": ["Tanium Inventory에서 software/process 키워드 기반 영향 단말을 확인합니다."],
@@ -680,6 +723,7 @@ def _normalize_intelligence_payload(
         affected_products = [{"name": name, "platform": "unknown", "affected_versions": versions} for name in software[:20]]
 
     files = _string_values(ioc.get("file"), source_text) or _string_values(fallback_ioc.get("file"))
+    ports = _string_values(ioc.get("port"), source_text) or _string_values(fallback_ioc.get("port"))
     processes = _unique([*_string_values(keywords.get("processes"), source_text), *files])
     return {
         "content": {
@@ -703,10 +747,95 @@ def _normalize_intelligence_payload(
                 "domain": _string_values(ioc.get("domain"), source_text) or _string_values(fallback_ioc.get("domain")),
                 "hash": _string_values(ioc.get("hash"), source_text) or _string_values(fallback_ioc.get("hash")),
                 "file": files,
+                "port": ports,
             },
         },
         "recommended_actions": _string_values(payload.get("recommended_actions")) or _string_values(fallback.get("recommended_actions")),
     }
+
+
+def _entity_rows_from_payload(intelligence: NewsIntelligence, payload: dict[str, Any]) -> list[IntelligenceEntity]:
+    keywords = _as_dict(payload.get("investigation_keywords"))
+    rows: list[IntelligenceEntity] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(entity_type: str, value: Any, confidence: float = 0.65, attributes: dict[str, Any] | None = None) -> None:
+        text = str(value or "").strip()
+        key = (entity_type, text.lower())
+        if not text or key in seen:
+            return
+        seen.add(key)
+        rows.append(
+            IntelligenceEntity(
+                intelligence_id=intelligence.id,
+                source_type=intelligence.source_type,
+                article_id=intelligence.article_id,
+                vulnerability_id=intelligence.vulnerability_id,
+                email_id=intelligence.email_id,
+                entity_type=entity_type,
+                value=text,
+                confidence=confidence,
+                attributes=attributes or {},
+            )
+        )
+
+    for product in _normalize_affected_products(keywords.get("affected_products")):
+        add("affected_product", product.get("name"), 0.8, product)
+        for version in product.get("affected_versions") or []:
+            add("affected_version", version, 0.75, {"product": product.get("name"), "cve": product.get("cve")})
+        for version in product.get("fixed_versions") or []:
+            add("fixed_version", version, 0.75, {"product": product.get("name"), "cve": product.get("cve")})
+        if product.get("cve"):
+            add("cve", product.get("cve"), 0.85, {"product": product.get("name")})
+    for value in _string_values(keywords.get("software")):
+        add("software", value, 0.7)
+    for value in _string_values(keywords.get("services")):
+        add("service", value, 0.65)
+    for value in _string_values(keywords.get("processes")):
+        add("process", value, 0.65)
+    for value in _string_values(keywords.get("os")):
+        add("os", value, 0.65)
+    for value in _string_values(keywords.get("cve")):
+        add("cve", value.upper(), 0.85)
+    return rows
+
+
+def _ioc_rows_from_payload(intelligence: NewsIntelligence, payload: dict[str, Any]) -> list[IntelligenceIoc]:
+    keywords = _as_dict(payload.get("investigation_keywords"))
+    ioc = _as_dict(keywords.get("ioc"))
+    rows: list[IntelligenceIoc] = []
+    seen: set[tuple[str, str]] = set()
+    for ioc_type in ("ip", "domain", "hash", "file", "port"):
+        for value in _string_values(ioc.get(ioc_type)):
+            text = str(value).strip()
+            key = (ioc_type, text.lower())
+            if not text or key in seen:
+                continue
+            seen.add(key)
+            rows.append(
+                IntelligenceIoc(
+                    intelligence_id=intelligence.id,
+                    source_type=intelligence.source_type,
+                    article_id=intelligence.article_id,
+                    vulnerability_id=intelligence.vulnerability_id,
+                    email_id=intelligence.email_id,
+                    ioc_type=ioc_type,
+                    value=text,
+                    context=None,
+                    confidence=0.75,
+                    attributes={},
+                )
+            )
+    return rows
+
+
+def _sync_intelligence_objects(db: Session, intelligence: NewsIntelligence, payload: dict[str, Any]) -> dict[str, int]:
+    db.execute(delete(IntelligenceEntity).where(IntelligenceEntity.intelligence_id == intelligence.id))
+    db.execute(delete(IntelligenceIoc).where(IntelligenceIoc.intelligence_id == intelligence.id))
+    entity_rows = _entity_rows_from_payload(intelligence, payload)
+    ioc_rows = _ioc_rows_from_payload(intelligence, payload)
+    db.add_all([*entity_rows, *ioc_rows])
+    return {"entities": len(entity_rows), "iocs": len(ioc_rows)}
 
 
 async def build_intelligence(db: Session, source_type: str, item_id: int, refresh: bool = False) -> NewsIntelligence:
@@ -793,6 +922,9 @@ async def build_intelligence(db: Session, source_type: str, item_id: int, refres
     db.add(row)
     db.commit()
     db.refresh(row)
+    _sync_intelligence_objects(db, row, payload)
+    db.commit()
+    db.refresh(row)
     return row
 
 
@@ -829,6 +961,8 @@ def _keyword_groups(payload: dict[str, Any]) -> dict[str, list[str]]:
         "ip": _unique([str(value) for value in ioc.get("ip", []) if value]),
         "domain": _unique([str(value) for value in ioc.get("domain", []) if value]),
         "hash": _unique([str(value) for value in ioc.get("hash", []) if value]),
+        "file": _unique([str(value) for value in ioc.get("file", []) if value]),
+        "port": _unique([str(value) for value in ioc.get("port", []) if value]),
     }
 
 
@@ -966,17 +1100,43 @@ def _process_values(endpoint: EndpointSnapshot) -> list[str]:
     return _unique(values)
 
 
+def _port_values(endpoint: EndpointSnapshot) -> list[str]:
+    values: list[str] = []
+    for item in endpoint.ports or []:
+        if not isinstance(item, dict):
+            continue
+        for value in item.get("values", []) or []:
+            if value:
+                values.append(str(value))
+    return _unique(values)
+
+
+def _hardware_values(endpoint: EndpointSnapshot) -> list[str]:
+    values: list[str] = []
+    for item in endpoint.hardware or []:
+        if not isinstance(item, dict):
+            continue
+        values.extend(str(value) for value in item.get("values", []) or [] if value)
+        if item.get("value"):
+            values.append(str(item.get("value")))
+    return _unique(values)
+
+
 def _endpoint_text(endpoint: EndpointSnapshot) -> dict[str, str]:
     software = " ".join(f"{item.get('name', '')} {item.get('version', '')}" for item in endpoint.software or [] if isinstance(item, dict))
     processes = " ".join(" ".join(str(value) for value in item.get("values", [])) for item in endpoint.processes or [] if isinstance(item, dict))
     services = " ".join(f"{item.get('name', '')} {item.get('displayName', '')} {item.get('state', '')}" for item in endpoint.services or [] if isinstance(item, dict))
     os_text = " ".join(value for value in (endpoint.os_name, endpoint.os_version, endpoint.platform) if value)
+    ports = " ".join(_port_values(endpoint))
+    hardware = " ".join(_hardware_values(endpoint))
     return {
         "software": software,
         "processes": processes,
         "services": services,
         "os": os_text,
         "ip": endpoint.ip_address or "",
+        "ports": ports,
+        "hardware": hardware,
         "identity": " ".join(value for value in (endpoint.hostname, endpoint.tanium_endpoint_id, endpoint.ip_address) if value),
     }
 
@@ -1071,10 +1231,22 @@ def _assess_endpoint(endpoint: EndpointSnapshot, groups: dict[str, list[Any]]) -
         if keyword and _contains(endpoint.ip_address or "", str(keyword)):
             ip_evidence.append({"scope": "ip", "keyword": str(keyword)})
 
+    port_evidence: list[dict[str, Any]] = []
+    port_text = " ".join(_port_values(endpoint))
+    for keyword in groups.get("port", []):
+        if keyword and re.search(rf"(?<!\d){re.escape(str(keyword))}(?!\d)", port_text):
+            port_evidence.append({"scope": "port", "keyword": str(keyword)})
+
+    file_evidence: list[dict[str, Any]] = []
+    combined_runtime_text = _normalize_product(" ".join([*_process_values(endpoint), *[item["name"] for item in _software_records(endpoint)]]))
+    for keyword in groups.get("file", []):
+        if keyword and any(term and term in combined_runtime_text for term in _product_terms(str(keyword))):
+            file_evidence.append({"scope": "file", "keyword": str(keyword), "evidence_source": "software_or_process_name"})
+
     if any(item["classification"] == "confirmed" for item in product_matches):
         return _make_assessment(endpoint, "confirmed", "affected_product_version_match", product_matches, affected_products)
-    if product_matches or process_evidence or service_evidence or ip_evidence:
-        return _make_assessment(endpoint, "potential", "product_process_service_or_ip_match_requires_review", [*product_matches, *process_evidence, *service_evidence, *ip_evidence], affected_products)
+    if product_matches or process_evidence or service_evidence or ip_evidence or port_evidence or file_evidence:
+        return _make_assessment(endpoint, "potential", "product_process_service_ip_port_or_file_match_requires_review", [*product_matches, *process_evidence, *service_evidence, *ip_evidence, *port_evidence, *file_evidence], affected_products)
     if not_affected:
         return _make_assessment(endpoint, "not_affected", "product_found_but_version_or_platform_not_affected", not_affected, affected_products)
     if os_evidence:
@@ -1232,6 +1404,8 @@ async def run_inventory_investigation(db: Session, intelligence: NewsIntelligenc
         "not_affected": len(not_affected),
         "total_endpoints": len(endpoints),
     }
+    entity_count = db.scalar(select(func.count(IntelligenceEntity.id)).where(IntelligenceEntity.intelligence_id == intelligence.id)) or 0
+    ioc_count = db.scalar(select(func.count(IntelligenceIoc.id)).where(IntelligenceIoc.intelligence_id == intelligence.id)) or 0
     investigation_plan = {
         "affected_products": groups["affected_products"],
         "software_queries": groups["software"],
@@ -1239,6 +1413,8 @@ async def run_inventory_investigation(db: Session, intelligence: NewsIntelligenc
         "platform_queries": groups["os"],
         "process_queries": groups["processes"],
         "service_queries": groups["services"],
+        "file_queries": groups["file"],
+        "port_queries": groups["port"],
         "cves": groups["cve"],
         "decision_model": {
             "confirmed": "제품명 매칭 + 플랫폼 일치 + 설치 버전이 영향 버전 조건에 해당",
@@ -1276,7 +1452,13 @@ async def run_inventory_investigation(db: Session, intelligence: NewsIntelligenc
         "unmatched_indicators": {
             "domain": groups["domain"],
             "hash": groups["hash"],
+            "file": groups["file"],
+            "port": groups["port"],
             "cve": groups["cve"],
+        },
+        "normalized_objects": {
+            "entities": entity_count,
+            "iocs": ioc_count,
         },
         "affected_versions": groups["versions"],
         "capabilities": TANIUM_CAPABILITIES,

@@ -148,6 +148,39 @@ class NewsIntelligence(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class IntelligenceEntity(Base):
+    __tablename__ = "intelligence_entities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    intelligence_id: Mapped[int] = mapped_column(ForeignKey("news_intelligence.id"), index=True)
+    source_type: Mapped[str] = mapped_column(String(32), index=True)
+    article_id: Mapped[int | None] = mapped_column(ForeignKey("articles.id"), index=True)
+    vulnerability_id: Mapped[int | None] = mapped_column(ForeignKey("vulnerabilities.id"), index=True)
+    email_id: Mapped[int | None] = mapped_column(ForeignKey("email_messages.id"), index=True)
+    entity_type: Mapped[str] = mapped_column(String(64), index=True)
+    value: Mapped[str] = mapped_column(Text, index=True)
+    confidence: Mapped[float] = mapped_column(Float, default=0.5, index=True)
+    attributes: Mapped[dict | list | None] = mapped_column(JsonType)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class IntelligenceIoc(Base):
+    __tablename__ = "intelligence_iocs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    intelligence_id: Mapped[int] = mapped_column(ForeignKey("news_intelligence.id"), index=True)
+    source_type: Mapped[str] = mapped_column(String(32), index=True)
+    article_id: Mapped[int | None] = mapped_column(ForeignKey("articles.id"), index=True)
+    vulnerability_id: Mapped[int | None] = mapped_column(ForeignKey("vulnerabilities.id"), index=True)
+    email_id: Mapped[int | None] = mapped_column(ForeignKey("email_messages.id"), index=True)
+    ioc_type: Mapped[str] = mapped_column(String(64), index=True)
+    value: Mapped[str] = mapped_column(Text, index=True)
+    context: Mapped[str | None] = mapped_column(Text)
+    confidence: Mapped[float] = mapped_column(Float, default=0.5, index=True)
+    attributes: Mapped[dict | list | None] = mapped_column(JsonType)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class InvestigationRun(Base):
     __tablename__ = "investigation_runs"
 

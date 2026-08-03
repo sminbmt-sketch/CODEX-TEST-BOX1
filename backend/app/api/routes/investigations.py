@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import InvestigationRun, NewsIntelligence
+from app.db.models import IntelligenceEntity, IntelligenceIoc, InvestigationRun, NewsIntelligence
 from app.db.session import get_db
-from app.schemas import IntelligenceOut, InvestigationRequest, InvestigationRunOut
+from app.schemas import IntelligenceEntityOut, IntelligenceIocOut, IntelligenceOut, InvestigationRequest, InvestigationRunOut
 from app.services.investigation import TANIUM_CAPABILITIES, build_intelligence, run_inventory_investigation
 
 router = APIRouter(prefix="/investigations", tags=["investigations"])
@@ -26,6 +26,44 @@ def list_intelligence(
         query = query.where(NewsIntelligence.source_type == source_type)
     rows = db.scalars(query.limit(limit)).all()
     return [IntelligenceOut.model_validate(row) for row in rows]
+
+
+@router.get("/entities", response_model=list[IntelligenceEntityOut])
+def list_entities(
+    source_type: str | None = Query(default=None, pattern="^(news|cve|email)$"),
+    entity_type: str | None = None,
+    q: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> list[IntelligenceEntityOut]:
+    query = select(IntelligenceEntity).order_by(IntelligenceEntity.created_at.desc())
+    if source_type:
+        query = query.where(IntelligenceEntity.source_type == source_type)
+    if entity_type:
+        query = query.where(IntelligenceEntity.entity_type == entity_type)
+    if q:
+        query = query.where(IntelligenceEntity.value.ilike(f"%{q}%"))
+    rows = db.scalars(query.limit(limit)).all()
+    return [IntelligenceEntityOut.model_validate(row) for row in rows]
+
+
+@router.get("/iocs", response_model=list[IntelligenceIocOut])
+def list_iocs(
+    source_type: str | None = Query(default=None, pattern="^(news|cve|email)$"),
+    ioc_type: str | None = None,
+    q: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> list[IntelligenceIocOut]:
+    query = select(IntelligenceIoc).order_by(IntelligenceIoc.created_at.desc())
+    if source_type:
+        query = query.where(IntelligenceIoc.source_type == source_type)
+    if ioc_type:
+        query = query.where(IntelligenceIoc.ioc_type == ioc_type)
+    if q:
+        query = query.where(IntelligenceIoc.value.ilike(f"%{q}%"))
+    rows = db.scalars(query.limit(limit)).all()
+    return [IntelligenceIocOut.model_validate(row) for row in rows]
 
 
 @router.post("/intelligence", response_model=IntelligenceOut)
