@@ -32,6 +32,7 @@ def _ensure_schema() -> None:
     endpoint_columns = {column["name"] for column in inspector.get_columns("endpoint_snapshots")} if "endpoint_snapshots" in table_names else set()
     source_columns = {column["name"] for column in inspector.get_columns("sources")} if "sources" in table_names else set()
     intelligence_columns = {column["name"] for column in inspector.get_columns("news_intelligence")} if "news_intelligence" in table_names else set()
+    automation_columns = {column["name"] for column in inspector.get_columns("automation_settings")} if "automation_settings" in table_names else set()
     with engine.begin() as connection:
         if "enabled" not in source_columns:
             connection.execute(text("ALTER TABLE sources ADD COLUMN enabled BOOLEAN DEFAULT TRUE"))
@@ -71,6 +72,14 @@ def _ensure_schema() -> None:
             connection.execute(text("ALTER TABLE endpoint_snapshots ADD COLUMN sbom JSON"))
         if "news_intelligence" in table_names and "email_id" not in intelligence_columns:
             connection.execute(text("ALTER TABLE news_intelligence ADD COLUMN email_id INTEGER"))
+        if "automation_settings" in table_names and "inventory_enabled" not in automation_columns:
+            connection.execute(text("ALTER TABLE automation_settings ADD COLUMN inventory_enabled BOOLEAN DEFAULT FALSE"))
+        if "automation_settings" in table_names and "inventory_interval_value" not in automation_columns:
+            connection.execute(text("ALTER TABLE automation_settings ADD COLUMN inventory_interval_value INTEGER DEFAULT 1"))
+        if "automation_settings" in table_names and "inventory_interval_unit" not in automation_columns:
+            connection.execute(text("ALTER TABLE automation_settings ADD COLUMN inventory_interval_unit VARCHAR(16) DEFAULT 'hours'"))
+        if "automation_settings" in table_names and "inventory_last_run_at" not in automation_columns:
+            connection.execute(text("ALTER TABLE automation_settings ADD COLUMN inventory_last_run_at TIMESTAMP WITH TIME ZONE"))
 
 
 def get_db() -> Generator[Session, None, None]:

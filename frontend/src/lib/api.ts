@@ -39,6 +39,7 @@ export type Article = {
   tags?: unknown;
   risk_score: number;
   source?: Source | null;
+  created_at?: string | null;
 };
 
 export type EmailMessage = {
@@ -72,6 +73,7 @@ export type Vulnerability = {
   product?: string | null;
   source_url?: string | null;
   published_at?: string | null;
+  created_at?: string | null;
 };
 
 export type DashboardSummary = {
@@ -182,6 +184,10 @@ export type AutomationSettings = {
   timezone: string;
   collection_days: number;
   last_run_at?: string | null;
+  inventory_enabled: boolean;
+  inventory_interval_value: number;
+  inventory_interval_unit: "minutes" | "hours" | "days";
+  inventory_last_run_at?: string | null;
   updated_at?: string | null;
 };
 

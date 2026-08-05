@@ -78,6 +78,13 @@ function formatDate(value?: string | null) {
   return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
+function isNewItem(value?: string | null) {
+  if (!value) return false;
+  const createdAt = new Date(value).getTime();
+  if (Number.isNaN(createdAt)) return false;
+  return Date.now() - createdAt <= 24 * 60 * 60 * 1000;
+}
+
 function severityClass(severity?: string | null) {
   const value = severity?.toLowerCase();
   if (value === "critical") return "chip critical";
@@ -420,6 +427,9 @@ export default function App() {
     run_time: "09:00",
     timezone: "Asia/Seoul",
     collection_days: 7,
+    inventory_enabled: false,
+    inventory_interval_value: 1,
+    inventory_interval_unit: "hours",
   });
   const [emailForm, setEmailForm] = useState({
     enabled: false,
@@ -871,10 +881,10 @@ export default function App() {
   return (
     <main className="ops-app">
       <aside className="sidebar">
-        <div className="brand">
+        <a className="brand" href="#/dashboard" aria-label="SecureWatch Home">
           <strong>SecureWatch</strong>
           <span>Security Operations</span>
-        </div>
+        </a>
         <nav className="nav" aria-label="SecureWatch navigation">
           {navItems.map((item) => (
             <a key={item.route} className={route === item.route ? "active" : undefined} href={`#/${item.route}`}>
@@ -924,7 +934,8 @@ export default function App() {
                     <span>요약 내용</span>
                   </div>
                   {dashboardCves.map((item) => (
-                    <div key={item.id} className="cve-row">
+                    <div key={item.id} className={isNewItem(item.created_at) ? "cve-row new-item-row" : "cve-row"}>
+                      {isNewItem(item.created_at) && <span className="new-badge">NEW!</span>}
                       <strong className="center-cell cve-id-cell">{item.cve_id}</strong>
                       <span className={item.kev ? "chip critical" : severityClass(item.cvss_severity)} title={item.cvss_severity || undefined}>
                         {item.kev ? "KEV" : severityLabel(item.cvss_severity)}
@@ -946,7 +957,8 @@ export default function App() {
                 </div>
                 <div className="brief">
                   {(state.summary?.latest_articles || []).slice(0, 10).map((item) => (
-                    <article key={item.url}>
+                    <article key={item.url} className={isNewItem(item.created_at) ? "new-item-card" : undefined}>
+                      {isNewItem(item.created_at) && <span className="new-badge">NEW!</span>}
                       <strong>{item.title}</strong>
                       <p>{articleDisplay(item).summary}</p>
                     </article>
@@ -1369,7 +1381,59 @@ export default function App() {
 
         {route === "tanium-inventory" && (
           <section>
-            <PageTitle title="Tanium Inventory" description="Tanium API로 수집한 단말, 설치 프로그램, 실행 프로세스 정보를 제공합니다." badge={`${state.summary?.endpoint_count ?? state.inventory.length} endpoints`} tone="ok" />
+            <PageTitle title="Tanium Inventory" description="Tanium API로 수집한 단말, 설치 프로그램, 실행 프로세스 정보를 제공합니다." badge={`${state.summary?.endpoint_count ?? state.inventory.length} endpoints`} tone="ok">
+              <button type="button" title="Sync Tanium endpoint inventory" onClick={() => void runAction("Endpoint sync", api.taniumSyncEndpoints)} disabled={Boolean(state.action)}>
+                <RefreshCw size={16} />
+                <span>Update Now</span>
+              </button>
+            </PageTitle>
+            <article className="page-card inventory-automation-card">
+              <header>
+                <div>
+                  <h3>Inventory 자동 업데이트</h3>
+                  <p>Tanium 단말 Inventory를 지정한 간격으로 자동 동기화합니다.</p>
+                </div>
+                <span className={automationForm.inventory_enabled ? "pill ok" : "pill neutral"}>{automationForm.inventory_enabled ? "Enabled" : "Disabled"}</span>
+              </header>
+              <div className="inventory-automation-form">
+                <label className="check-field">
+                  <input
+                    type="checkbox"
+                    checked={automationForm.inventory_enabled}
+                    onChange={(event) => setAutomationForm((current) => ({ ...current, inventory_enabled: event.target.checked }))}
+                  />
+                  자동 업데이트 사용
+                </label>
+                <label>
+                  업데이트 주기
+                  <div className="interval-control">
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={automationForm.inventory_interval_value}
+                      onChange={(event) => setAutomationForm((current) => ({ ...current, inventory_interval_value: Number(event.target.value) }))}
+                    />
+                    <select
+                      value={automationForm.inventory_interval_unit}
+                      onChange={(event) => setAutomationForm((current) => ({ ...current, inventory_interval_unit: event.target.value as AutomationSettings["inventory_interval_unit"] }))}
+                    >
+                      <option value="minutes">분</option>
+                      <option value="hours">시</option>
+                      <option value="days">일</option>
+                    </select>
+                  </div>
+                </label>
+                <button type="button" title="Save Tanium inventory automatic update interval" onClick={() => void saveAutomationSettings()} disabled={Boolean(state.action)}>
+                  <CalendarClock size={16} />
+                  <span>Save Schedule</span>
+                </button>
+              </div>
+              <div className="settings-note">
+                <span>Last inventory run: {formatDate(state.automation?.inventory_last_run_at)}</span>
+                <span>Interval: {automationForm.inventory_interval_value} {automationForm.inventory_interval_unit}</span>
+              </div>
+            </article>
             <article className="page-card">
               <header>
                 <div>

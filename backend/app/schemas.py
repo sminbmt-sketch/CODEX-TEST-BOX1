@@ -49,6 +49,7 @@ class ArticleOut(BaseModel):
     tags: dict | list | None = None
     risk_score: float
     source: SourceOut | None = None
+    created_at: datetime | None = None
 
 
 class EmailMessageOut(BaseModel):
@@ -99,6 +100,7 @@ class VulnerabilityOut(BaseModel):
     source_url: str | None = None
     published_at: datetime | None = None
     last_modified_at: datetime | None = None
+    created_at: datetime | None = None
 
 
 class EndpointSnapshotOut(BaseModel):
@@ -355,6 +357,10 @@ class AutomationSettingOut(BaseModel):
     timezone: str = "Asia/Seoul"
     collection_days: int = 7
     last_run_at: datetime | None = None
+    inventory_enabled: bool = False
+    inventory_interval_value: int = 1
+    inventory_interval_unit: Literal["minutes", "hours", "days"] = "hours"
+    inventory_last_run_at: datetime | None = None
     updated_at: datetime | None = None
 
 
@@ -368,6 +374,9 @@ class AutomationSettingUpdate(BaseModel):
     run_time: str = Field(default="09:00", pattern=r"^\d{2}:\d{2}$")
     timezone: str = "Asia/Seoul"
     collection_days: int = Field(default=7, ge=1, le=365)
+    inventory_enabled: bool = False
+    inventory_interval_value: int = Field(default=1, ge=1, le=365)
+    inventory_interval_unit: Literal["minutes", "hours", "days"] = "hours"
 
 
 class EmailSettingOut(BaseModel):

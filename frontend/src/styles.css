@@ -67,7 +67,10 @@ button:disabled {
 }
 
 .brand {
+  color: inherit;
+  display: block;
   margin-bottom: 26px;
+  text-decoration: none;
 }
 
 .brand strong {
@@ -80,6 +83,10 @@ button:disabled {
   margin-top: 4px;
   color: #8b98a6;
   font-size: 12px;
+}
+
+.brand:hover strong {
+  color: #8ff3ff;
 }
 
 .nav {
@@ -241,6 +248,7 @@ button:disabled {
 }
 
 .cve-row {
+  position: relative;
   display: grid;
   grid-template-columns: 122px 98px 70px minmax(220px, 1fr);
   gap: 10px;
@@ -248,6 +256,10 @@ button:disabled {
   padding: 12px 14px;
   color: #d9e3ec;
   font-size: 13px;
+}
+
+.cve-row.new-item-row {
+  padding-top: 28px;
 }
 
 .center-cell {
@@ -336,11 +348,35 @@ button:disabled {
 }
 
 .brief article {
+  position: relative;
   border-left: 3px solid #0f6b79;
   border-radius: 0 6px 6px 0;
   background: rgba(18, 29, 39, 0.72);
   box-shadow: inset 0 -1px 0 rgba(38, 50, 64, 0.72);
   padding: 12px 12px 14px 13px;
+}
+
+.brief article.new-item-card {
+  padding-top: 28px;
+}
+
+.new-badge {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 18px;
+  border-radius: 4px;
+  background: #15a85f;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  padding: 0 6px;
+  letter-spacing: 0;
+  z-index: 1;
 }
 
 .brief article:last-child {
@@ -1284,6 +1320,43 @@ button:disabled {
 
 .settings-card {
   margin-bottom: 14px;
+}
+
+.inventory-automation-card {
+  margin-bottom: 14px;
+}
+
+.inventory-automation-form {
+  align-items: end;
+  display: grid;
+  grid-template-columns: minmax(190px, 240px) minmax(220px, 300px) auto;
+  gap: 12px;
+  padding: 14px;
+}
+
+.inventory-automation-form label {
+  display: grid;
+  gap: 7px;
+  color: #8b98a6;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.inventory-automation-form input,
+.inventory-automation-form select {
+  min-height: 36px;
+  border: 1px solid #334355;
+  border-radius: 6px;
+  background: #101821;
+  color: #d9e3ec;
+  font: inherit;
+  padding: 0 10px;
+}
+
+.interval-control {
+  display: grid;
+  grid-template-columns: minmax(88px, 1fr) 96px;
+  gap: 8px;
 }
 
 .settings-form {

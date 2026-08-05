@@ -234,6 +234,10 @@ class AutomationSetting(Base):
     timezone: Mapped[str] = mapped_column(String(64), default="Asia/Seoul")
     collection_days: Mapped[int] = mapped_column(Integer, default=7)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    inventory_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    inventory_interval_value: Mapped[int] = mapped_column(Integer, default=1)
+    inventory_interval_unit: Mapped[str] = mapped_column(String(16), default="hours")
+    inventory_last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 

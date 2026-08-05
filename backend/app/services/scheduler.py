@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.db.models import AutomationSetting, AuditLog, Vulnerability
 from app.db.session import SessionLocal
 from app.services.news_sources import collect_rss_feeds
+from app.services.tanium_inventory import sync_endpoint_inventory
 from app.services.vulnerability_sources import collect_nvd_recent_feed, update_epss_scores
 
 
@@ -54,6 +55,24 @@ def _should_run(setting: AutomationSetting, now_utc: datetime) -> bool:
     return True
 
 
+def _inventory_interval(setting: AutomationSetting) -> timedelta:
+    value = max(1, int(setting.inventory_interval_value or 1))
+    unit = setting.inventory_interval_unit or "hours"
+    if unit == "minutes":
+        return timedelta(minutes=value)
+    if unit == "days":
+        return timedelta(days=value)
+    return timedelta(hours=value)
+
+
+def _should_run_inventory(setting: AutomationSetting, now_utc: datetime) -> bool:
+    if not setting.inventory_enabled:
+        return False
+    if setting.inventory_last_run_at is None:
+        return True
+    return now_utc - setting.inventory_last_run_at >= _inventory_interval(setting)
+
+
 def _recent_cve_ids(db: Session, days: int) -> list[str]:
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     return list(
@@ -86,6 +105,15 @@ async def run_automation_once(db: Session, setting: AutomationSetting) -> dict[s
     return result
 
 
+async def run_inventory_automation_once(db: Session, setting: AutomationSetting) -> dict[str, int]:
+    fetched, updated = await sync_endpoint_inventory(db, first=500)
+    result = {"inventory_fetched": fetched, "inventory_updated": updated}
+    setting.inventory_last_run_at = datetime.now(timezone.utc)
+    db.add(AuditLog(action="automation_run", target="tanium_inventory", detail=result))
+    db.commit()
+    return result
+
+
 async def scheduler_loop() -> None:
     SCHEDULER_STATE["running"] = True
     try:
@@ -96,6 +124,9 @@ async def scheduler_loop() -> None:
                 setting = get_automation_setting(db)
                 if _should_run(setting, datetime.now(timezone.utc)):
                     await run_automation_once(db, setting)
+                    SCHEDULER_STATE["last_error"] = None
+                if _should_run_inventory(setting, datetime.now(timezone.utc)):
+                    await run_inventory_automation_once(db, setting)
                     SCHEDULER_STATE["last_error"] = None
             except Exception as exc:
                 SCHEDULER_STATE["last_error"] = str(exc)

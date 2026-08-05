@@ -202,6 +202,9 @@ def update_automation_settings(payload: AutomationSettingUpdate, db: Session = D
     row.run_time = payload.run_time
     row.timezone = payload.timezone
     row.collection_days = payload.collection_days
+    row.inventory_enabled = payload.inventory_enabled
+    row.inventory_interval_value = payload.inventory_interval_value
+    row.inventory_interval_unit = payload.inventory_interval_unit
     db.commit()
     db.refresh(row)
     return AutomationSettingOut.model_validate(row)
