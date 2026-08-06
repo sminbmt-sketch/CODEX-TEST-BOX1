@@ -78,11 +78,33 @@ function formatDate(value?: string | null) {
   return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
-function isNewItem(value?: string | null) {
+const newItemWindowMs = 24 * 60 * 60 * 1000;
+
+function readStorageKey(type: "cve" | "article", id: number) {
+  return `securewatch-read:${type}:${id}`;
+}
+
+function isReadItem(type: "cve" | "article", id: number) {
+  try {
+    return window.localStorage.getItem(readStorageKey(type, id)) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function markItemRead(type: "cve" | "article", id: number) {
+  try {
+    window.localStorage.setItem(readStorageKey(type, id), new Date().toISOString());
+  } catch {
+    // localStorage may be unavailable in private or restricted browser contexts.
+  }
+}
+
+function isNewItem(value: string | null | undefined, type: "cve" | "article", id: number) {
   if (!value) return false;
   const createdAt = new Date(value).getTime();
   if (Number.isNaN(createdAt)) return false;
-  return Date.now() - createdAt <= 24 * 60 * 60 * 1000;
+  return Date.now() - createdAt <= newItemWindowMs && !isReadItem(type, id);
 }
 
 function severityClass(severity?: string | null) {
@@ -454,6 +476,7 @@ export default function App() {
   const [llmMessage, setLlmMessage] = useState<string | undefined>();
   const [llmModels, setLlmModels] = useState<string[]>([]);
   const [inventoryDetail, setInventoryDetail] = useState<{ endpoint: EndpointSnapshot; type: "software" | "processes" | "etc" } | null>(null);
+  const [, setReadVersion] = useState(0);
   const investigationResultRef = useRef<HTMLElement | null>(null);
 
   async function load() {
@@ -799,6 +822,11 @@ export default function App() {
     await runAction(`Delete ${label}`, () => api.resetData(target));
   }
 
+  function markRead(type: "cve" | "article", id: number) {
+    markItemRead(type, id);
+    setReadVersion((value) => value + 1);
+  }
+
   useEffect(() => {
     const onHashChange = () => setRoute(routeFromHash());
     window.addEventListener("hashchange", onHashChange);
@@ -934,8 +962,12 @@ export default function App() {
                     <span>요약 내용</span>
                   </div>
                   {dashboardCves.map((item) => (
-                    <div key={item.id} className={isNewItem(item.created_at) ? "cve-row new-item-row" : "cve-row"}>
-                      {isNewItem(item.created_at) && <span className="new-badge">NEW!</span>}
+                    <div
+                      key={item.id}
+                      className={isNewItem(item.created_at, "cve", item.id) ? "cve-row new-item-row" : "cve-row"}
+                      onClick={() => markRead("cve", item.id)}
+                    >
+                      {isNewItem(item.created_at, "cve", item.id) && <span className="new-badge">NEW!</span>}
                       <strong className="center-cell cve-id-cell">{item.cve_id}</strong>
                       <span className={item.kev ? "chip critical" : severityClass(item.cvss_severity)} title={item.cvss_severity || undefined}>
                         {item.kev ? "KEV" : severityLabel(item.cvss_severity)}
@@ -957,8 +989,12 @@ export default function App() {
                 </div>
                 <div className="brief">
                   {(state.summary?.latest_articles || []).slice(0, 10).map((item) => (
-                    <article key={item.url} className={isNewItem(item.created_at) ? "new-item-card" : undefined}>
-                      {isNewItem(item.created_at) && <span className="new-badge">NEW!</span>}
+                    <article
+                      key={item.url}
+                      className={isNewItem(item.created_at, "article", item.id) ? "new-item-card" : undefined}
+                      onClick={() => markRead("article", item.id)}
+                    >
+                      {isNewItem(item.created_at, "article", item.id) && <span className="new-badge">NEW!</span>}
                       <strong>{item.title}</strong>
                       <p>{articleDisplay(item).summary}</p>
                     </article>
@@ -1038,9 +1074,19 @@ export default function App() {
             </div>
             <div className="page-grid">
               {state.vulnerabilities.map((item) => (
-                <article key={item.id} className={(cveSummaryMode || cveInvestigationMode) ? "page-card selectable-card" : "page-card"}>
+                <article
+                  key={item.id}
+                  className={[
+                    "page-card",
+                    (cveSummaryMode || cveInvestigationMode || isNewItem(item.created_at, "cve", item.id)) ? "selectable-card" : "",
+                    (cveSummaryMode || cveInvestigationMode) ? "selection-active-card" : "",
+                    isNewItem(item.created_at, "cve", item.id) ? "new-item-card" : "",
+                  ].filter(Boolean).join(" ")}
+                  onClick={() => markRead("cve", item.id)}
+                >
+                  {isNewItem(item.created_at, "cve", item.id) && <span className="new-badge">NEW!</span>}
                   {cveInvestigationMode && (
-                    <label className="select-check investigation-check">
+                    <label className="select-check investigation-check" onClick={(event) => event.stopPropagation()}>
                       <input
                         type="radio"
                         name="cve-investigation-target"
@@ -1051,7 +1097,7 @@ export default function App() {
                     </label>
                   )}
                   {cveSummaryMode && !cveInvestigationMode && (
-                    <label className="select-check">
+                    <label className="select-check" onClick={(event) => event.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={selectedCveIds.includes(item.id)}
@@ -1064,7 +1110,7 @@ export default function App() {
                     <div>
                       <h3>
                         {item.source_url ? (
-                          <a href={item.source_url} target="_blank" rel="noreferrer">
+                          <a href={item.source_url} target="_blank" rel="noreferrer" onClick={() => markRead("cve", item.id)}>
                             {item.cve_id} <ExternalLink size={13} />
                           </a>
                         ) : (
@@ -1193,9 +1239,19 @@ export default function App() {
               {state.articles.map((article) => {
                 const display = articleDisplay(article);
                 return (
-                  <article key={article.id} className={(newsSummaryMode || newsInvestigationMode) ? "page-card selectable-card" : "page-card"}>
+                  <article
+                    key={article.id}
+                    className={[
+                      "page-card",
+                      (newsSummaryMode || newsInvestigationMode || isNewItem(article.created_at, "article", article.id)) ? "selectable-card" : "",
+                      (newsSummaryMode || newsInvestigationMode) ? "selection-active-card" : "",
+                      isNewItem(article.created_at, "article", article.id) ? "new-item-card" : "",
+                    ].filter(Boolean).join(" ")}
+                    onClick={() => markRead("article", article.id)}
+                  >
+                    {isNewItem(article.created_at, "article", article.id) && <span className="new-badge">NEW!</span>}
                     {newsInvestigationMode && (
-                      <label className="select-check investigation-check">
+                      <label className="select-check investigation-check" onClick={(event) => event.stopPropagation()}>
                         <input
                           type="radio"
                           name="news-investigation-target"
@@ -1206,7 +1262,7 @@ export default function App() {
                       </label>
                     )}
                     {newsSummaryMode && !newsInvestigationMode && (
-                      <label className="select-check">
+                      <label className="select-check" onClick={(event) => event.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={selectedArticleIds.includes(article.id)}
@@ -1218,7 +1274,7 @@ export default function App() {
                     <header>
                       <div>
                         <h3>
-                          <a href={article.url} target="_blank" rel="noreferrer">
+                          <a href={article.url} target="_blank" rel="noreferrer" onClick={() => markRead("article", article.id)}>
                             {article.title} <ExternalLink size={13} />
                           </a>
                         </h3>

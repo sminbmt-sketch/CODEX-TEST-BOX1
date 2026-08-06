@@ -379,6 +379,10 @@ button:disabled {
   z-index: 1;
 }
 
+.selection-active-card .new-badge {
+  left: 86px;
+}
+
 .brief article:last-child {
   box-shadow: none;
 }
