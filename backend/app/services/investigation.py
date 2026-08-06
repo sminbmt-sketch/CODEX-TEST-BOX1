@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Article, EmailMessage, EndpointSnapshot, IntelligenceEntity, IntelligenceIoc, InvestigationRun, NewsIntelligence, Vulnerability
 from app.services.llm import SummaryService, resolve_llm_config, sanitize_llm_error
+from app.services.tanium_client import TaniumConfigurationError, TaniumGatewayClient
 
 
 CVE_RE = re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.IGNORECASE)
@@ -239,6 +240,12 @@ TANIUM_CAPABILITIES = {
                 "sensors": ["MAC Address", "Windows-Operating System Build Number", "Chassis Type", "Is Virtual"],
                 "rest_question": "Get Computer Name and Kernel Version from all machines",
             },
+            {
+                "name": "Live Sensor Question",
+                "purpose": "조사 항목별 Kernel Modules, Kernel Version, File Exists 같은 센서를 즉시 read-only question으로 조회",
+                "method": "rest_read_only",
+                "rest_question_example": "Get Computer Name and Tanium Client IP Address and Kernel Modules and Kernel Version and File Exists[/etc/modprobe.d/ovswrap.conf] from all entities",
+            },
         ],
         "query_inputs": {
             "software": "installedApplications.name/version에서 부분 일치 검색",
@@ -248,7 +255,7 @@ TANIUM_CAPABILITIES = {
             "os": "os.name/generation/platform에서 부분 일치 검색",
             "ip": "endpoint ipAddress에서 부분 일치 검색",
             "port": "Open Port 센서 결과에서 부분 일치 검색",
-            "file": "현재는 process/software 이름과 비교하고, 전용 File Exists 센서 확장 시 read-only question으로 전환",
+            "file": "File Exists[path] read-only question 결과와 비교",
             "hash": "현재는 IOC로 저장하고, Running Processes with Hash/File Hash 센서 확장 시 비교",
             "domain": "현재는 IOC로 저장하고, Established Connections/DNS telemetry 연동 시 비교",
         },
@@ -1122,6 +1129,212 @@ def _hardware_values(endpoint: EndpointSnapshot) -> list[str]:
     return _unique(values)
 
 
+def _rest_answer_values(cell: Any) -> list[str]:
+    values: list[str] = []
+    if isinstance(cell, list):
+        for item in cell:
+            if isinstance(item, dict):
+                value = item.get("text") or item.get("value") or item.get("name")
+            else:
+                value = item
+            text = re.sub(r"\s+", " ", str(value or "")).strip()
+            if text:
+                values.append(text)
+    else:
+        text = re.sub(r"\s+", " ", str(cell or "")).strip()
+        if text:
+            values.append(text)
+    return _unique(values)
+
+
+def _rest_question_rows(data: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    result_sets = data.get("data", {}).get("result_sets", []) if isinstance(data.get("data"), dict) else []
+    for result_set in result_sets:
+        columns = [str(column.get("name") or "") for column in result_set.get("columns") or [] if isinstance(column, dict)]
+        if not columns:
+            continue
+        for row in result_set.get("rows") or []:
+            cells = row.get("data") if isinstance(row, dict) else None
+            if not isinstance(cells, list):
+                continue
+            record: dict[str, Any] = {}
+            for index, column in enumerate(columns):
+                if index >= len(cells):
+                    continue
+                values = _rest_answer_values(cells[index])
+                record[column] = values
+            if record:
+                rows.append(record)
+    return rows
+
+
+def _looks_like_path(value: str) -> bool:
+    return value.startswith(("/", "C:\\", "c:\\")) and len(value) > 2
+
+
+def _live_sensor_question(groups: dict[str, list[Any]]) -> str | None:
+    text = " ".join(str(value) for values in groups.values() if isinstance(values, list) for value in values if not isinstance(value, dict)).lower()
+    product_text = " ".join(
+        str(item.get("name") or "")
+        for item in groups.get("affected_products", [])
+        if isinstance(item, dict)
+    ).lower()
+    files = _unique([str(value) for value in groups.get("file", []) if _looks_like_path(str(value))])[:5]
+    needs_kernel = any(term in f"{text} {product_text}" for term in ("linux kernel", "kernel", "open vswitch", "openvswitch", "ovs", "ovswrap"))
+    if not needs_kernel and not files:
+        return None
+
+    sensors = ["Computer Name", "Tanium Client IP Address"]
+    if needs_kernel:
+        sensors.extend(["Kernel Modules", "Kernel Version"])
+    sensors.extend(f"File Exists[{path}]" for path in files)
+    return "Get " + " and ".join(sensors) + " from all entities"
+
+
+async def _run_live_sensor_question(groups: dict[str, list[Any]]) -> dict[str, Any]:
+    question = _live_sensor_question(groups)
+    if not question:
+        return {"enabled": False, "reason": "no_live_sensor_keywords"}
+    client = TaniumGatewayClient()
+    if not client.configured:
+        return {"enabled": True, "question": question, "status": "skipped", "error": "tanium_not_configured"}
+
+    attempts = [question]
+    if question.endswith(" from all entities"):
+        attempts.append(question.removesuffix(" from all entities") + " from all machines")
+    errors: list[str] = []
+    for candidate in attempts:
+        try:
+            data = await client.ask_rest_question(candidate, wait_seconds=8)
+            rows = _rest_question_rows(data)
+            return {
+                "enabled": True,
+                "status": "completed",
+                "question": candidate,
+                "row_count": len(rows),
+                "rows": rows[:200],
+            }
+        except (TaniumConfigurationError, Exception) as exc:
+            errors.append(f"{candidate}: {sanitize_llm_error(exc)}")
+    return {"enabled": True, "status": "failed", "question": question, "error": " | ".join(errors)[-2000:]}
+
+
+def _live_rows_by_endpoint(live_sensor_query: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    rows_by_key: dict[str, list[dict[str, Any]]] = {}
+    for row in _as_list(live_sensor_query.get("rows")):
+        if not isinstance(row, dict):
+            continue
+        names = _rest_answer_values(row.get("Computer Name"))
+        for value in names:
+            key = value.strip().lower()
+            if key:
+                rows_by_key.setdefault(key, []).append(row)
+    return rows_by_key
+
+
+def _endpoint_live_row(endpoint: EndpointSnapshot, live_rows: dict[str, list[dict[str, Any]]]) -> dict[str, Any] | None:
+    hostname = str(endpoint.hostname or "").strip().lower()
+    if not hostname:
+        return None
+    candidates = live_rows.get(hostname) or []
+    if not candidates:
+        return None
+    endpoint_ip = str(endpoint.ip_address or "").strip()
+    if endpoint_ip:
+        for row in candidates:
+            if endpoint_ip in _rest_answer_values(row.get("Tanium Client IP Address")):
+                return row
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
+def _live_column_values(row: dict[str, Any], wanted: str) -> list[str]:
+    values: list[str] = []
+    for key, raw in row.items():
+        if wanted.lower() in str(key).lower():
+            values.extend(_rest_answer_values(raw))
+    return _unique(values)
+
+
+def _file_exists_evidence(row: dict[str, Any]) -> list[dict[str, Any]]:
+    evidence: list[dict[str, Any]] = []
+    for key, raw in row.items():
+        key_text = str(key)
+        if "file exists" not in key_text.lower():
+            continue
+        values = _rest_answer_values(raw)
+        value_text = " ".join(values).lower()
+        exists = any(term in value_text for term in ("true", "exists", "yes", "found", "1"))
+        evidence.append({"scope": "file_exists", "sensor": key_text, "values": values[:10], "exists": exists})
+    return evidence
+
+
+def _assess_live_sensor_evidence(
+    endpoint: EndpointSnapshot,
+    groups: dict[str, list[Any]],
+    live_row: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not live_row:
+        return None
+
+    kernel_versions = _live_column_values(live_row, "Kernel Version")
+    kernel_modules = _live_column_values(live_row, "Kernel Modules")
+    modules_text = " ".join(kernel_modules).lower()
+    has_ovs_module = any(term in modules_text for term in ("openvswitch", "open v switch", "open_vswitch", "ovs"))
+    file_evidence = _file_exists_evidence(live_row)
+    file_exists = any(item.get("exists") for item in file_evidence)
+
+    evidence: list[dict[str, Any]] = []
+    affected_products = [item for item in groups.get("affected_products", []) if isinstance(item, dict)]
+    kernel_product = next(
+        (item for item in affected_products if "kernel" in str(item.get("name") or "").lower()),
+        None,
+    )
+    platform_ok = _platform_matches(endpoint, str(kernel_product.get("platform") or "linux")) if kernel_product else True
+    version_status = "version_unknown"
+    if kernel_versions and kernel_product:
+        versions = [str(value) for value in kernel_product.get("affected_versions", []) or [] if value]
+        version_status = _version_status(kernel_versions[0], versions)
+        evidence.append(
+            {
+                "scope": "live_kernel_version",
+                "sensor": "Kernel Version",
+                "values": kernel_versions[:10],
+                "affected_versions": versions,
+                "platform_match": platform_ok,
+                "version_status": version_status,
+            }
+        )
+    elif kernel_versions:
+        evidence.append({"scope": "live_kernel_version", "sensor": "Kernel Version", "values": kernel_versions[:10]})
+
+    if kernel_modules:
+        evidence.append(
+            {
+                "scope": "live_kernel_modules",
+                "sensor": "Kernel Modules",
+                "matched": "openvswitch" if has_ovs_module else None,
+                "sample": kernel_modules[:20],
+            }
+        )
+    evidence.extend(file_evidence)
+
+    if not evidence:
+        return None
+    if platform_ok and version_status == "affected_version" and has_ovs_module:
+        return _make_assessment(endpoint, "confirmed", "live_kernel_version_and_openvswitch_module_match", evidence, affected_products)
+    if platform_ok and version_status == "safe_version" and has_ovs_module:
+        return _make_assessment(endpoint, "not_affected", "live_openvswitch_module_but_kernel_version_safe", evidence, affected_products)
+    if platform_ok and (has_ovs_module or file_exists or version_status == "affected_version"):
+        return _make_assessment(endpoint, "potential", "live_sensor_kernel_module_version_or_file_match_requires_review", evidence, affected_products)
+    if platform_ok and kernel_versions and _platform_matches(endpoint, "Linux"):
+        return _make_assessment(endpoint, "environment_candidate", "live_kernel_version_only", evidence, affected_products)
+    return None
+
+
 def _endpoint_text(endpoint: EndpointSnapshot) -> dict[str, str]:
     software = " ".join(f"{item.get('name', '')} {item.get('version', '')}" for item in endpoint.software or [] if isinstance(item, dict))
     processes = " ".join(" ".join(str(value) for value in item.get("values", [])) for item in endpoint.processes or [] if isinstance(item, dict))
@@ -1382,11 +1595,22 @@ async def run_inventory_investigation(db: Session, intelligence: NewsIntelligenc
     payload = intelligence.intelligence if isinstance(intelligence.intelligence, dict) else {}
     groups = _keyword_groups(payload)
     endpoints = db.scalars(select(EndpointSnapshot).order_by(EndpointSnapshot.hostname.asc().nullslast())).all()
+    live_sensor_query = await _run_live_sensor_question(groups)
+    live_rows = _live_rows_by_endpoint(live_sensor_query)
     rule_assessments: list[dict[str, Any]] = []
 
     for endpoint in endpoints:
         assessment = _assess_endpoint(endpoint, groups)
-        if assessment:
+        live_assessment = _assess_live_sensor_evidence(endpoint, groups, _endpoint_live_row(endpoint, live_rows))
+        if assessment and live_assessment:
+            if _assessment_rank(str(live_assessment.get("classification"))) >= _assessment_rank(str(assessment.get("classification"))):
+                rule_assessments.append(live_assessment)
+            else:
+                assessment["evidence"] = [*_as_list(assessment.get("evidence")), *_as_list(live_assessment.get("evidence"))][:30]
+                rule_assessments.append(assessment)
+        elif live_assessment:
+            rule_assessments.append(live_assessment)
+        elif assessment:
             rule_assessments.append(assessment)
 
     judged_assessments, judge_meta = await _llm_judge_inventory(db, intelligence, payload, groups, rule_assessments)
@@ -1440,6 +1664,7 @@ async def run_inventory_investigation(db: Session, intelligence: NewsIntelligenc
             "candidate_endpoint_count": len(rule_assessments),
             "candidate_evidence": [_candidate_for_llm(assessment) for assessment in rule_assessments[:80]],
             "empty_match_reason": empty_match_reason,
+            "live_sensor_query": live_sensor_query,
         },
         "confirmed": buckets["confirmed"][:200],
         "potential": buckets["potential"][:200],
