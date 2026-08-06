@@ -380,7 +380,9 @@ button:disabled {
 }
 
 .selection-active-card .new-badge {
-  left: 86px;
+  left: auto;
+  right: 14px;
+  top: 10px;
 }
 
 .brief article:last-child {
