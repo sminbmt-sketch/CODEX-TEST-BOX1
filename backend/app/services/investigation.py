@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.db.models import Article, EmailMessage, EndpointSnapshot, IntelligenceEntity, IntelligenceIoc, InvestigationRun, NewsIntelligence, Vulnerability
 from app.services.llm import SummaryService, resolve_llm_config, sanitize_llm_error
 from app.services.tanium_client import TaniumConfigurationError, TaniumGatewayClient
+from app.services.tanium_sensors import relevant_sensor_candidates
 
 
 CVE_RE = re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.IGNORECASE)
@@ -176,6 +177,13 @@ COMPACT_NEWS_INTELLIGENCE_SCHEMA = {
         "os": [],
         "cve": [],
         "ioc": {"ip": [], "domain": [], "hash": [], "file": [], "port": []},
+        "sensor_query_plan": [
+            {
+                "sensor": "Exact Tanium sensor name from candidate_sensors",
+                "parameters": {},
+                "purpose": "Read-only endpoint investigation purpose",
+            }
+        ],
     },
     "recommended_actions": [],
 }
@@ -637,6 +645,47 @@ def _string_values(values: Any, source_text: str | None = None) -> list[str]:
     return _unique(result)
 
 
+def _sensor_plan_values(values: Any, candidate_sensors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    allowed = {str(item.get("name") or "").lower(): item for item in candidate_sensors if item.get("name")}
+    plans: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in _as_list(values):
+        if not isinstance(item, dict):
+            continue
+        sensor = str(item.get("sensor") or "").strip()
+        key = sensor.lower()
+        if not sensor or key in seen or key not in allowed:
+            continue
+        params = item.get("parameters") if isinstance(item.get("parameters"), dict) else {}
+        plans.append(
+            {
+                "sensor": allowed[key]["name"],
+                "parameters": params,
+                "purpose": str(item.get("purpose") or "")[:300],
+            }
+        )
+        seen.add(key)
+    return plans[:20]
+
+
+def _sensor_terms(source_type: str, title: str, body: str, fallback_payload: dict[str, Any]) -> list[str]:
+    keywords = _as_dict(fallback_payload.get("investigation_keywords"))
+    ioc = _as_dict(keywords.get("ioc"))
+    values = [
+        source_type,
+        title,
+        body[:2000],
+        *_string_values(keywords.get("software")),
+        *_string_values(keywords.get("processes")),
+        *_string_values(keywords.get("services")),
+        *_string_values(keywords.get("os")),
+        *_string_values(keywords.get("cve")),
+        *_string_values(ioc.get("file")),
+        *_string_values(ioc.get("port")),
+    ]
+    return _unique([value for value in values if value])
+
+
 def _normalize_affected_products(values: Any) -> list[dict[str, Any]]:
     products: list[dict[str, Any]] = []
     for item in _as_list(values):
@@ -689,6 +738,7 @@ def _normalize_intelligence_payload(
     source_url: str | None,
     source_fetch: str,
     source_text: str,
+    candidate_sensors: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     content = _as_dict(payload.get("content"))
     keywords = _as_dict(payload.get("investigation_keywords"))
@@ -732,6 +782,7 @@ def _normalize_intelligence_payload(
     files = _string_values(ioc.get("file"), source_text) or _string_values(fallback_ioc.get("file"))
     ports = _string_values(ioc.get("port"), source_text) or _string_values(fallback_ioc.get("port"))
     processes = _unique([*_string_values(keywords.get("processes"), source_text), *files])
+    sensor_query_plan = _sensor_plan_values(keywords.get("sensor_query_plan"), candidate_sensors or [])
     return {
         "content": {
             "source_type": source_type,
@@ -756,6 +807,7 @@ def _normalize_intelligence_payload(
                 "file": files,
                 "port": ports,
             },
+            "sensor_query_plan": sensor_query_plan,
         },
         "recommended_actions": _string_values(payload.get("recommended_actions")) or _string_values(fallback.get("recommended_actions")),
     }
@@ -864,6 +916,7 @@ async def build_intelligence(db: Session, source_type: str, item_id: int, refres
     source_fetch = "fetched_url" if fetched_body else "fallback_local"
     fallback_payload = _rules_intelligence(source_type, title, body, source_url)
     fallback_payload["content"]["source_fetch"] = source_fetch
+    candidate_sensors = relevant_sensor_candidates(db, _sensor_terms(source_type, title, body, fallback_payload), limit=30)
     payload = fallback_payload
     method = "rules"
     error = fetch_error
@@ -878,6 +931,9 @@ async def build_intelligence(db: Session, source_type: str, item_id: int, refres
         user_prompt = (
             "Analyze the source content and extract only endpoint-investigation data that can drive Tanium read-only checks. "
             "Focus on affected products, product aliases, vulnerable or fixed versions, process names, services, OS/platforms, CVEs, files, domains, IPs, and hashes. "
+            "Use candidate_sensors to propose sensor_query_plan entries for Tanium read-only checks. "
+            "Only use exact sensor names from candidate_sensors. Do not invent Tanium sensors. "
+            "For parameterized sensors such as File Exists, include required parameters such as path. "
             "For product vulnerabilities, affected_products must include the software name even when exact vulnerable versions are not fully clear. "
             "For fixed-release articles, treat the fixed version as the threshold used to identify older potentially affected installs. "
             "Preserve source tables as row-level evidence. Do not collapse CVE/product/version rows into one vague product. "
@@ -892,6 +948,7 @@ async def build_intelligence(db: Session, source_type: str, item_id: int, refres
             "Use the exact compact JSON structure below and keep the entire response within configured max_tokens.\n\n"
             f"Configured max_tokens: {llm_config.max_tokens}\n"
             f"Required compact JSON schema: {schema}\n\n"
+            f"Candidate Tanium sensors: {json.dumps(candidate_sensors, ensure_ascii=False, separators=(',', ':'))[:7000]}\n\n"
             f"Source type: {source_type}\nTitle: {title}\nSource URL: {source_url or ''}\n"
             f"Source fetch status: {source_fetch}\n"
             f"Source text:\n{prompt_body}"
@@ -908,6 +965,7 @@ async def build_intelligence(db: Session, source_type: str, item_id: int, refres
                     source_url=source_url,
                     source_fetch=source_fetch,
                     source_text=body,
+                    candidate_sensors=candidate_sensors,
                 )
                 method = "llm_plan"
             else:
@@ -970,6 +1028,7 @@ def _keyword_groups(payload: dict[str, Any]) -> dict[str, list[str]]:
         "hash": _unique([str(value) for value in ioc.get("hash", []) if value]),
         "file": _unique([str(value) for value in ioc.get("file", []) if value]),
         "port": _unique([str(value) for value in ioc.get("port", []) if value]),
+        "sensor_query_plan": [item for item in list_values("sensor_query_plan") if isinstance(item, dict)],
     }
 
 
@@ -1640,6 +1699,7 @@ async def run_inventory_investigation(db: Session, intelligence: NewsIntelligenc
         "file_queries": groups["file"],
         "port_queries": groups["port"],
         "cves": groups["cve"],
+        "sensor_query_plan": groups["sensor_query_plan"],
         "decision_model": {
             "confirmed": "제품명 매칭 + 플랫폼 일치 + 설치 버전이 영향 버전 조건에 해당",
             "potential": "제품/프로세스/서비스/IP 근거는 있으나 버전 정보가 없거나 판정 불가",

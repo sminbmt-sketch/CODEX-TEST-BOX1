@@ -1,6 +1,6 @@
 import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarClock, DatabaseZap, ExternalLink, FileText, Mail, Plus, Radar, RefreshCw, Search, Server, Trash2, Wifi } from "lucide-react";
-import { api, type Article, type AutomationSettings, type CollectionJobStatus, type DashboardSummary, type DataResetTarget, type Detection, type EmailMessage, type EmailSettings, type EndpointSnapshot, type InvestigationRun, type LlmProvider, type LlmSettings, type Source, type SummaryLogItem, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
+import { CalendarClock, DatabaseZap, ExternalLink, FileText, ListChecks, Mail, Plus, Radar, RefreshCw, Search, Server, Trash2, Wifi } from "lucide-react";
+import { api, type Article, type AutomationSettings, type CollectionJobStatus, type DashboardSummary, type DataResetTarget, type Detection, type EmailMessage, type EmailSettings, type EndpointSnapshot, type InvestigationRun, type LlmProvider, type LlmSettings, type Source, type SummaryLogItem, type TaniumSensor, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
 
 type Route = "dashboard" | "cves" | "security-news" | "email" | "tanium-inventory" | "investigation" | "reports" | "logs" | "settings";
 type InvestigationTargetType = "news" | "kisa" | "cve" | "email";
@@ -18,6 +18,7 @@ type LoadState = {
   trends?: TrendReport;
   summaryLogs: SummaryLogItem[];
   tanium?: TaniumStatus;
+  taniumSensors: TaniumSensor[];
   llm?: LlmSettings;
   automation?: AutomationSettings;
   email?: EmailSettings;
@@ -40,6 +41,7 @@ const emptyState: LoadState = {
   detections: [],
   sources: [],
   summaryLogs: [],
+  taniumSensors: [],
   loading: true,
 };
 
@@ -485,7 +487,7 @@ export default function App() {
       const cveParams = { limit: cvePageSize, offset: (cvePage - 1) * cvePageSize, q: cveSearch.trim() || undefined, sort: cveSort, severity: cveSeverity || undefined };
       const newsParams = { limit: newsPageSize, offset: (newsPage - 1) * newsPageSize, q: newsSearch.trim() || undefined, sort: newsSort, category: newsCategory };
       const emailParams = { limit: emailPageSize, offset: (emailPage - 1) * emailPageSize, q: emailSearch.trim() || undefined, sender: emailSender.trim() || undefined, sort: emailSort };
-      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, emails, emailTotal, tanium, inventory, detections, trends, llm, automation, email, sources, nvdYearJob, epssJob, summaryLogs] = await Promise.all([
+      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, emails, emailTotal, tanium, inventory, detections, trends, llm, automation, email, sources, nvdYearJob, epssJob, summaryLogs, taniumSensors] = await Promise.all([
         api.summary(),
         api.vulnerabilities(cveParams),
         api.vulnerabilityCount(cveParams),
@@ -504,8 +506,9 @@ export default function App() {
         api.nvdYearStatus(),
         api.epssStatus(),
         api.summaryFailureLogs(),
+        api.taniumSensors(),
       ]);
-      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, emails, emailTotal, tanium, inventory, detections, trends, llm, automation, email, nvdYearJob, epssJob, sources, summaryLogs, loading: false });
+      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, emails, emailTotal, tanium, inventory, detections, trends, llm, automation, email, nvdYearJob, epssJob, sources, summaryLogs, taniumSensors, loading: false });
       setSourceDrafts(Object.fromEntries(sources.map((source) => [source.id, { name: source.name, kind: source.kind, url: source.url || "", enabled: source.enabled }])));
       setLlmForm((current) => ({
         ...current,
@@ -1836,8 +1839,40 @@ export default function App() {
                   <Wifi size={16} />
                   <span>Test Gateway</span>
                 </button>
+                <button title="Sync Tanium Sensor catalog for LLM investigation planning" onClick={() => void runAction("Sensor catalog", api.taniumSyncSensors)} disabled={Boolean(state.action)}>
+                  <ListChecks size={16} />
+                  <span>Sensors</span>
+                </button>
               </div>
             </div>
+            <article className="page-card settings-card">
+              <header>
+                <div>
+                  <h3>Tanium Sensor Catalog</h3>
+                  <p>LLM이 조사 계획을 세울 때 참고할 read-only Sensor 목록입니다. 실행 전 백엔드 allowlist 검증에 사용됩니다.</p>
+                </div>
+                <span className="pill neutral">{state.taniumSensors.length} sensors</span>
+              </header>
+              <div className="settings-note">
+                <span>현재 단계: LLM은 Sensor 선택과 query plan만 제안</span>
+                <span>실행 단계: 백엔드가 read-only Sensor와 파라미터를 검증 후 Tanium 질의</span>
+              </div>
+              <div className="source-list sensor-catalog-list">
+                {state.taniumSensors.slice(0, 20).map((sensor) => (
+                  <div className="source-row sensor-row" key={sensor.id}>
+                    <div>
+                      <strong>{sensor.name}</strong>
+                      <span>
+                        {[sensor.category, sensor.platform, sensor.source].filter(Boolean).join(" · ")}
+                      </span>
+                      {sensor.description && <small>{sensor.description}</small>}
+                    </div>
+                    <span className={sensor.usable ? "pill ok" : "pill neutral"}>{sensor.usable ? "Usable" : "Disabled"}</span>
+                  </div>
+                ))}
+                {!state.taniumSensors.length && <div className="empty block">Sensor Catalog가 비어 있습니다. Sensors 버튼으로 동기화하세요.</div>}
+              </div>
+            </article>
             <article className="page-card settings-card data-management-card">
               <header>
                 <div>

@@ -139,6 +139,27 @@ export type TaniumStatus = {
   message: string;
 };
 
+export type TaniumSensor = {
+  id: number;
+  name: string;
+  description?: string | null;
+  category?: string | null;
+  platform?: string | null;
+  parameters?: unknown;
+  result_columns?: unknown;
+  source: string;
+  usable: boolean;
+  last_seen_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type TaniumSensorSyncResult = {
+  fetched: number;
+  created_or_updated: number;
+  source: string;
+  errors: string[];
+};
+
 export type LlmProvider = "disabled" | "ollama" | "openai" | "gemini" | "anthropic";
 
 export type LlmSettings = {
@@ -407,6 +428,8 @@ export const api = {
   llmModels: (payload?: LlmSettingsUpdate) =>
     request<LlmModelList>("/api/settings/llm/models", { method: "POST", body: payload ? JSON.stringify(payload) : undefined }),
   taniumTest: () => request<Record<string, unknown>>("/api/tanium/test", { method: "POST" }),
+  taniumSensors: () => request<TaniumSensor[]>("/api/tanium/sensors?limit=500"),
+  taniumSyncSensors: () => request<TaniumSensorSyncResult>("/api/tanium/sync-sensors", { method: "POST" }),
   taniumSyncEndpoints: () => request<Record<string, unknown>>("/api/tanium/sync-endpoints", { method: "POST" }),
   taniumAnalyzeImpact: () => request<Record<string, unknown>>("/api/tanium/analyze-impact", { method: "POST" }),
   inventory: () => request<EndpointSnapshot[]>("/api/tanium/inventory?limit=1000"),

@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.db.models import Detection, EndpointSnapshot, Vulnerability
+from app.db.models import Detection, EndpointSnapshot, TaniumSensor, Vulnerability
 from app.db.session import get_db
-from app.schemas import DetectionOut, EndpointSnapshotOut, ImpactAnalysisResult, TaniumStatus
+from app.schemas import DetectionOut, EndpointSnapshotOut, ImpactAnalysisResult, TaniumSensorOut, TaniumSensorSyncResult, TaniumStatus
 from app.services.impact import analyze_basic_software_matches, analyze_recent_vulnerabilities
 from app.services.tanium_client import TaniumConfigurationError, TaniumGatewayClient
 from app.services.tanium_inventory import sync_endpoint_inventory
+from app.services.tanium_sensors import seed_core_sensors, sync_tanium_sensors
 
 router = APIRouter(prefix="/tanium", tags=["tanium"])
 
@@ -53,6 +54,37 @@ def list_inventory(
         .limit(limit)
     ).all()
     return [EndpointSnapshotOut.model_validate(row) for row in rows]
+
+
+@router.get("/sensors", response_model=list[TaniumSensorOut])
+def list_sensors(
+    q: str | None = None,
+    limit: int = Query(default=200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+) -> list[TaniumSensorOut]:
+    if db.scalar(select(TaniumSensor.id).limit(1)) is None:
+        seed_core_sensors(db)
+    query = select(TaniumSensor).where(TaniumSensor.usable.is_(True))
+    if q:
+        pattern = f"%{q.strip()}%"
+        query = query.where(
+            (TaniumSensor.name.ilike(pattern))
+            | (TaniumSensor.description.ilike(pattern))
+            | (TaniumSensor.category.ilike(pattern))
+        )
+    rows = db.scalars(query.order_by(TaniumSensor.category.asc().nullslast(), TaniumSensor.name.asc()).limit(limit)).all()
+    return [TaniumSensorOut.model_validate(row) for row in rows]
+
+
+@router.post("/sync-sensors", response_model=TaniumSensorSyncResult)
+async def sync_sensors(db: Session = Depends(get_db)) -> TaniumSensorSyncResult:
+    try:
+        fetched, changed, source, errors = await sync_tanium_sensors(db)
+    except TaniumConfigurationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Tanium sensor catalog sync failed: {exc}") from exc
+    return TaniumSensorSyncResult(fetched=fetched, created_or_updated=changed, source=source, errors=errors)
 
 
 @router.post("/sync-endpoints", response_model=ImpactAnalysisResult)

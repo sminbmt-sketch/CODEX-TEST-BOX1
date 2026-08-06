@@ -304,6 +304,29 @@ class TaniumStatus(BaseModel):
     message: str
 
 
+class TaniumSensorOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    description: str | None = None
+    category: str | None = None
+    platform: str | None = None
+    parameters: dict | list | None = None
+    result_columns: dict | list | None = None
+    source: str
+    usable: bool
+    last_seen_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class TaniumSensorSyncResult(BaseModel):
+    fetched: int = 0
+    created_or_updated: int = 0
+    source: str = "unknown"
+    errors: list[str] = Field(default_factory=list)
+
+
 class TaniumGraphQLRequest(BaseModel):
     query: str
     variables: dict | None = None

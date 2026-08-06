@@ -1277,6 +1277,34 @@ button:disabled {
   opacity: 0.62;
 }
 
+.sensor-catalog-list {
+  max-height: 360px;
+  overflow: auto;
+}
+
+.sensor-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.sensor-row div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.sensor-row strong,
+.sensor-row span,
+.sensor-row small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sensor-row small {
+  color: #8b98a6;
+  line-height: 1.45;
+}
+
 .source-add-row {
   border-color: #365263;
   background: #0e202b;
