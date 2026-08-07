@@ -80,6 +80,18 @@ def _ensure_schema() -> None:
             connection.execute(text("ALTER TABLE automation_settings ADD COLUMN inventory_interval_unit VARCHAR(16) DEFAULT 'hours'"))
         if "automation_settings" in table_names and "inventory_last_run_at" not in automation_columns:
             connection.execute(text("ALTER TABLE automation_settings ADD COLUMN inventory_last_run_at TIMESTAMP WITH TIME ZONE"))
+        if "automation_settings" in table_names and "summary_enabled" not in automation_columns:
+            connection.execute(text("ALTER TABLE automation_settings ADD COLUMN summary_enabled BOOLEAN DEFAULT FALSE"))
+        if "automation_settings" in table_names and "summary_cve_enabled" not in automation_columns:
+            connection.execute(text("ALTER TABLE automation_settings ADD COLUMN summary_cve_enabled BOOLEAN DEFAULT TRUE"))
+        if "automation_settings" in table_names and "summary_news_enabled" not in automation_columns:
+            connection.execute(text("ALTER TABLE automation_settings ADD COLUMN summary_news_enabled BOOLEAN DEFAULT TRUE"))
+        if "automation_settings" in table_names and "summary_run_time" not in automation_columns:
+            connection.execute(text("ALTER TABLE automation_settings ADD COLUMN summary_run_time VARCHAR(5) DEFAULT '10:00'"))
+        if "automation_settings" in table_names and "summary_days" not in automation_columns:
+            connection.execute(text("ALTER TABLE automation_settings ADD COLUMN summary_days INTEGER DEFAULT 7"))
+        if "automation_settings" in table_names and "summary_last_run_at" not in automation_columns:
+            connection.execute(text("ALTER TABLE automation_settings ADD COLUMN summary_last_run_at TIMESTAMP WITH TIME ZONE"))
 
 
 def get_db() -> Generator[Session, None, None]:

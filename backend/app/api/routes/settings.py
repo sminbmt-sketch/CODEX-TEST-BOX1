@@ -205,6 +205,11 @@ def update_automation_settings(payload: AutomationSettingUpdate, db: Session = D
     row.inventory_enabled = payload.inventory_enabled
     row.inventory_interval_value = payload.inventory_interval_value
     row.inventory_interval_unit = payload.inventory_interval_unit
+    row.summary_enabled = payload.summary_enabled
+    row.summary_cve_enabled = payload.summary_cve_enabled
+    row.summary_news_enabled = payload.summary_news_enabled
+    row.summary_run_time = payload.summary_run_time
+    row.summary_days = payload.summary_days
     db.commit()
     db.refresh(row)
     return AutomationSettingOut.model_validate(row)

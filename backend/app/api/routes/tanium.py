@@ -59,7 +59,7 @@ def list_inventory(
 @router.get("/sensors", response_model=list[TaniumSensorOut])
 def list_sensors(
     q: str | None = None,
-    limit: int = Query(default=200, ge=1, le=1000),
+    limit: int = Query(default=200, ge=1, le=5000),
     db: Session = Depends(get_db),
 ) -> list[TaniumSensorOut]:
     if db.scalar(select(TaniumSensor.id).limit(1)) is None:

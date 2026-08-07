@@ -9,6 +9,7 @@ from app.db.models import AutomationSetting, AuditLog, Vulnerability
 from app.db.session import SessionLocal
 from app.services.news_sources import collect_rss_feeds
 from app.services.tanium_inventory import sync_endpoint_inventory
+from app.services.llm import summarize_recent_articles, summarize_recent_vulnerabilities
 from app.services.vulnerability_sources import collect_nvd_recent_feed, update_epss_scores
 
 
@@ -73,6 +74,21 @@ def _should_run_inventory(setting: AutomationSetting, now_utc: datetime) -> bool
     return now_utc - setting.inventory_last_run_at >= _inventory_interval(setting)
 
 
+def _should_run_summaries(setting: AutomationSetting, now_utc: datetime) -> bool:
+    if not setting.summary_enabled:
+        return False
+    now = now_utc.astimezone(_tz(setting.timezone))
+    try:
+        hour, minute = [int(part) for part in setting.summary_run_time.split(":", maxsplit=1)]
+    except ValueError:
+        hour, minute = 10, 0
+    if now.hour != hour or now.minute != minute:
+        return False
+    if setting.summary_last_run_at and now_utc - setting.summary_last_run_at < timedelta(hours=23):
+        return False
+    return True
+
+
 def _recent_cve_ids(db: Session, days: int) -> list[str]:
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     return list(
@@ -114,6 +130,31 @@ async def run_inventory_automation_once(db: Session, setting: AutomationSetting)
     return result
 
 
+async def run_summary_automation_once(db: Session, setting: AutomationSetting) -> dict[str, int]:
+    result = {
+        "cve_processed": 0,
+        "cve_llm_success": 0,
+        "cve_fallback": 0,
+        "news_processed": 0,
+        "news_llm_success": 0,
+        "news_fallback": 0,
+    }
+    if setting.summary_cve_enabled:
+        stats = await summarize_recent_vulnerabilities(db, limit=None, days=setting.summary_days, include_existing=False)
+        result["cve_processed"] = stats.processed
+        result["cve_llm_success"] = stats.llm_success
+        result["cve_fallback"] = stats.fallback
+    if setting.summary_news_enabled:
+        stats = await summarize_recent_articles(db, limit=None, days=setting.summary_days, include_existing=False)
+        result["news_processed"] = stats.processed
+        result["news_llm_success"] = stats.llm_success
+        result["news_fallback"] = stats.fallback
+    setting.summary_last_run_at = datetime.now(timezone.utc)
+    db.add(AuditLog(action="automation_run", target="summaries", detail=result))
+    db.commit()
+    return result
+
+
 async def scheduler_loop() -> None:
     SCHEDULER_STATE["running"] = True
     try:
@@ -127,6 +168,9 @@ async def scheduler_loop() -> None:
                     SCHEDULER_STATE["last_error"] = None
                 if _should_run_inventory(setting, datetime.now(timezone.utc)):
                     await run_inventory_automation_once(db, setting)
+                    SCHEDULER_STATE["last_error"] = None
+                if _should_run_summaries(setting, datetime.now(timezone.utc)):
+                    await run_summary_automation_once(db, setting)
                     SCHEDULER_STATE["last_error"] = None
             except Exception as exc:
                 SCHEDULER_STATE["last_error"] = str(exc)

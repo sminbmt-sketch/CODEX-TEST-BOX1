@@ -1513,6 +1513,34 @@ button:disabled {
   font-weight: 760;
 }
 
+.settings-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 12px;
+  padding: 14px;
+}
+
+.settings-summary-grid div {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #263240;
+  border-radius: 7px;
+  background: #101821;
+  padding: 14px;
+}
+
+.settings-summary-grid span {
+  color: #8b98a6;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.settings-summary-grid strong {
+  color: #e6edf3;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
 .placeholder {
   padding: 18px;
   color: #9aa7b5;

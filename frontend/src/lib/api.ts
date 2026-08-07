@@ -209,6 +209,12 @@ export type AutomationSettings = {
   inventory_interval_value: number;
   inventory_interval_unit: "minutes" | "hours" | "days";
   inventory_last_run_at?: string | null;
+  summary_enabled: boolean;
+  summary_cve_enabled: boolean;
+  summary_news_enabled: boolean;
+  summary_run_time: string;
+  summary_days: number;
+  summary_last_run_at?: string | null;
   updated_at?: string | null;
 };
 
@@ -428,7 +434,7 @@ export const api = {
   llmModels: (payload?: LlmSettingsUpdate) =>
     request<LlmModelList>("/api/settings/llm/models", { method: "POST", body: payload ? JSON.stringify(payload) : undefined }),
   taniumTest: () => request<Record<string, unknown>>("/api/tanium/test", { method: "POST" }),
-  taniumSensors: () => request<TaniumSensor[]>("/api/tanium/sensors?limit=500"),
+  taniumSensors: () => request<TaniumSensor[]>("/api/tanium/sensors?limit=5000"),
   taniumSyncSensors: () => request<TaniumSensorSyncResult>("/api/tanium/sync-sensors", { method: "POST" }),
   taniumSyncEndpoints: () => request<Record<string, unknown>>("/api/tanium/sync-endpoints", { method: "POST" }),
   taniumAnalyzeImpact: () => request<Record<string, unknown>>("/api/tanium/analyze-impact", { method: "POST" }),

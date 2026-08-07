@@ -384,6 +384,12 @@ class AutomationSettingOut(BaseModel):
     inventory_interval_value: int = 1
     inventory_interval_unit: Literal["minutes", "hours", "days"] = "hours"
     inventory_last_run_at: datetime | None = None
+    summary_enabled: bool = False
+    summary_cve_enabled: bool = True
+    summary_news_enabled: bool = True
+    summary_run_time: str = "10:00"
+    summary_days: int = 7
+    summary_last_run_at: datetime | None = None
     updated_at: datetime | None = None
 
 
@@ -400,6 +406,11 @@ class AutomationSettingUpdate(BaseModel):
     inventory_enabled: bool = False
     inventory_interval_value: int = Field(default=1, ge=1, le=365)
     inventory_interval_unit: Literal["minutes", "hours", "days"] = "hours"
+    summary_enabled: bool = False
+    summary_cve_enabled: bool = True
+    summary_news_enabled: bool = True
+    summary_run_time: str = Field(default="10:00", pattern=r"^\d{2}:\d{2}$")
+    summary_days: int = Field(default=7, ge=1, le=365)
 
 
 class EmailSettingOut(BaseModel):

@@ -454,6 +454,11 @@ export default function App() {
     inventory_enabled: false,
     inventory_interval_value: 1,
     inventory_interval_unit: "hours",
+    summary_enabled: false,
+    summary_cve_enabled: true,
+    summary_news_enabled: true,
+    summary_run_time: "10:00",
+    summary_days: 7,
   });
   const [emailForm, setEmailForm] = useState({
     enabled: false,
@@ -899,6 +904,11 @@ export default function App() {
   }, [state.summary, state.tanium]);
 
   const newsSources = state.sources.filter((source) => source.kind !== "vulnerability");
+  const sensorUpdatedValues = state.taniumSensors
+    .map((sensor) => sensor.last_seen_at || sensor.updated_at)
+    .filter(Boolean)
+    .sort()
+  const sensorLastUpdated = sensorUpdatedValues.length ? sensorUpdatedValues[sensorUpdatedValues.length - 1] : undefined;
   const visibleCveIds = state.vulnerabilities.map((item) => item.id);
   const visibleArticleIds = state.articles.map((item) => item.id);
   const dashboardCves = (state.summary?.top_risks || []).slice(0, 10);
@@ -1857,20 +1867,15 @@ export default function App() {
                 <span>현재 단계: LLM은 Sensor 선택과 query plan만 제안</span>
                 <span>실행 단계: 백엔드가 read-only Sensor와 파라미터를 검증 후 Tanium 질의</span>
               </div>
-              <div className="source-list sensor-catalog-list">
-                {state.taniumSensors.slice(0, 20).map((sensor) => (
-                  <div className="source-row sensor-row" key={sensor.id}>
-                    <div>
-                      <strong>{sensor.name}</strong>
-                      <span>
-                        {[sensor.category, sensor.platform, sensor.source].filter(Boolean).join(" · ")}
-                      </span>
-                      {sensor.description && <small>{sensor.description}</small>}
-                    </div>
-                    <span className={sensor.usable ? "pill ok" : "pill neutral"}>{sensor.usable ? "Usable" : "Disabled"}</span>
-                  </div>
-                ))}
-                {!state.taniumSensors.length && <div className="empty block">Sensor Catalog가 비어 있습니다. Sensors 버튼으로 동기화하세요.</div>}
+              <div className="settings-summary-grid">
+                <div>
+                  <span>가져온 Sensor 수량</span>
+                  <strong>{state.taniumSensors.length.toLocaleString()}</strong>
+                </div>
+                <div>
+                  <span>마지막 업데이트</span>
+                  <strong>{formatDate(sensorLastUpdated)}</strong>
+                </div>
               </div>
             </article>
             <article className="page-card settings-card data-management-card">
@@ -1902,6 +1907,70 @@ export default function App() {
               <div className="settings-note">
                 <span>전체: CVE, Security News, Tanium Inventory, Detection 삭제</span>
                 <span>부분: CVE, Security News, Tanium Inventory만 삭제</span>
+              </div>
+            </article>
+            <article className="page-card settings-card">
+              <header>
+                <div>
+                  <h3>Automatic Summaries</h3>
+                  <p>신규로 수집된 CVE와 Security News 중 LLM 요약이 완료되지 않은 항목만 백그라운드로 자동 요약합니다.</p>
+                </div>
+                <span className={automationForm.summary_enabled ? "pill ok" : "pill neutral"}>{automationForm.summary_enabled ? "Enabled" : "Disabled"}</span>
+              </header>
+              <div className="settings-form">
+                <label className="check-field">
+                  <input
+                    type="checkbox"
+                    checked={automationForm.summary_enabled}
+                    onChange={(event) => setAutomationForm((current) => ({ ...current, summary_enabled: event.target.checked }))}
+                  />
+                  자동 요약 사용
+                </label>
+                <label className="check-field">
+                  <input
+                    type="checkbox"
+                    checked={automationForm.summary_cve_enabled}
+                    onChange={(event) => setAutomationForm((current) => ({ ...current, summary_cve_enabled: event.target.checked }))}
+                  />
+                  CVE 자동 요약
+                </label>
+                <label className="check-field">
+                  <input
+                    type="checkbox"
+                    checked={automationForm.summary_news_enabled}
+                    onChange={(event) => setAutomationForm((current) => ({ ...current, summary_news_enabled: event.target.checked }))}
+                  />
+                  Security News 자동 요약
+                </label>
+                <label>
+                  요약 기간(최근 N일)
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={automationForm.summary_days}
+                    onChange={(event) => setAutomationForm((current) => ({ ...current, summary_days: Number(event.target.value) }))}
+                  />
+                </label>
+                <label>
+                  자동 요약 시간
+                  <input
+                    type="time"
+                    value={automationForm.summary_run_time}
+                    onChange={(event) => setAutomationForm((current) => ({ ...current, summary_run_time: event.target.value }))}
+                  />
+                </label>
+                <div className="settings-actions">
+                  <button title="Save automatic summary schedule" onClick={() => void saveAutomationSettings()} disabled={Boolean(state.action)}>
+                    <CalendarClock size={16} />
+                    <span>Save Summary</span>
+                  </button>
+                </div>
+              </div>
+              <div className="settings-note">
+                <span>Last summary: {formatDate(state.automation?.summary_last_run_at)}</span>
+                <span>이미 LLM 성공한 항목은 재요청하지 않음</span>
+                <span>요약 기간: {automationForm.summary_days} days</span>
               </div>
             </article>
             <article className="page-card settings-card">
