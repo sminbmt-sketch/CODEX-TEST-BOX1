@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SecureWatch Dashboard Concept</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #070b10;
+      color: #eaf1f8;
+      letter-spacing: 0;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background:
+        radial-gradient(circle at 18% 0%, rgba(25, 106, 121, 0.22), transparent 34%),
+        linear-gradient(180deg, #091018 0%, #070b10 100%);
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      border-right: 1px solid rgba(128, 151, 170, 0.16);
+      background: rgba(10, 16, 23, 0.82);
+      padding: 22px 16px;
+      backdrop-filter: blur(18px);
+    }
+
+    .brand strong {
+      display: block;
+      font-size: 20px;
+      letter-spacing: 0;
+    }
+
+    .brand span {
+      display: block;
+      margin-top: 4px;
+      color: #8d9cab;
+      font-size: 12px;
+    }
+
+    .nav {
+      display: grid;
+      gap: 7px;
+      margin-top: 28px;
+    }
+
+    .nav a {
+      border-radius: 8px;
+      color: #98a7b7;
+      padding: 10px 12px;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 720;
+    }
+
+    .nav a.active {
+      background: linear-gradient(135deg, rgba(23, 121, 139, 0.34), rgba(23, 121, 139, 0.12));
+      color: #9df2ff;
+      box-shadow: inset 0 0 0 1px rgba(104, 226, 244, 0.18);
+    }
+
+    .workspace {
+      padding: 24px;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      margin-bottom: 18px;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+
+    h1 {
+      font-size: 25px;
+      line-height: 1.15;
+    }
+
+    .topbar p {
+      color: #93a2b2;
+      margin-top: 7px;
+      font-size: 13px;
+    }
+
+    .live {
+      border: 1px solid rgba(112, 134, 155, 0.28);
+      border-radius: 999px;
+      color: #b5c4d2;
+      background: rgba(20, 30, 42, 0.74);
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 780;
+      white-space: nowrap;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .metric,
+    .panel {
+      border: 1px solid rgba(104, 128, 150, 0.2);
+      border-radius: 10px;
+      background: linear-gradient(180deg, rgba(19, 30, 42, 0.88), rgba(13, 21, 30, 0.92));
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
+    }
+
+    .metric {
+      min-height: 102px;
+      padding: 16px;
+    }
+
+    .metric label {
+      color: #8f9dab;
+      display: block;
+      font-size: 11px;
+      font-weight: 840;
+      text-transform: uppercase;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 10px;
+      color: #f2f8ff;
+      font-size: 29px;
+      line-height: 1;
+    }
+
+    .metric small {
+      color: #8796a6;
+      display: block;
+      margin-top: 8px;
+      font-size: 12px;
+    }
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(360px, 1fr);
+      grid-template-rows: minmax(430px, 1fr) 286px;
+      gap: 14px;
+    }
+
+    .panel {
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      border-bottom: 1px solid rgba(104, 128, 150, 0.17);
+      padding: 14px 16px;
+    }
+
+    .panel-header h2 {
+      font-size: 15px;
+    }
+
+    .panel-header span,
+    .ghost-button {
+      border: 1px solid rgba(107, 220, 239, 0.24);
+      border-radius: 999px;
+      background: rgba(22, 73, 85, 0.42);
+      color: #9bf0ff;
+      font-size: 11px;
+      font-weight: 840;
+      padding: 7px 10px;
+    }
+
+    .cve-panel {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .topic-panel {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    .news-panel {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+    }
+
+    .cve-table {
+      display: grid;
+    }
+
+    .cve-row {
+      display: grid;
+      grid-template-columns: 126px 104px 80px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+      min-height: 86px;
+      border-bottom: 1px solid rgba(104, 128, 150, 0.12);
+      padding: 12px 16px;
+    }
+
+    .cve-row.header {
+      min-height: 40px;
+      color: #8a99a9;
+      font-size: 11px;
+      font-weight: 860;
+      text-transform: uppercase;
+    }
+
+    .cve-id {
+      color: #eaf3fb;
+      font-weight: 880;
+    }
+
+    .severity {
+      justify-self: start;
+      border-radius: 999px;
+      padding: 6px 9px;
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .critical { background: rgba(164, 43, 52, 0.32); color: #ffb5b5; }
+    .high { background: rgba(151, 102, 23, 0.34); color: #ffd784; }
+    .medium { background: rgba(59, 82, 104, 0.58); color: #c4d2df; }
+
+    .summary {
+      color: #c4cfda;
+      font-size: 13px;
+      line-height: 1.42;
+    }
+
+    .topic-brief {
+      border-bottom: 1px solid rgba(104, 128, 150, 0.12);
+      color: #b8c7d4;
+      font-size: 13px;
+      line-height: 1.48;
+      padding: 12px 16px;
+    }
+
+    .topics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      padding: 14px 16px 16px;
+    }
+
+    .topic {
+      border: 1px solid rgba(104, 128, 150, 0.16);
+      border-radius: 8px;
+      background: rgba(9, 16, 23, 0.72);
+      padding: 12px;
+    }
+
+    .topic strong {
+      display: block;
+      font-size: 14px;
+    }
+
+    .topic span {
+      color: #7f90a1;
+      display: block;
+      font-size: 11px;
+      margin-top: 4px;
+    }
+
+    .topic p {
+      color: #b8c4cf;
+      font-size: 12px;
+      line-height: 1.42;
+      margin-top: 10px;
+    }
+
+    .news-list {
+      display: grid;
+      gap: 12px;
+      max-height: 760px;
+      overflow: auto;
+      padding: 14px 16px 16px;
+      scrollbar-color: #3c5267 #101821;
+      scrollbar-width: thin;
+    }
+
+    .news-card {
+      position: relative;
+      border: 1px solid rgba(104, 128, 150, 0.16);
+      border-left: 3px solid #1ba6b8;
+      border-radius: 8px;
+      background: rgba(9, 16, 23, 0.74);
+      padding: 13px 13px 14px;
+    }
+
+    .news-card strong {
+      display: block;
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
+    .news-card p {
+      color: #b9c5d0;
+      font-size: 13px;
+      line-height: 1.45;
+      margin-top: 9px;
+    }
+
+    .meta {
+      color: #8392a2;
+      display: block;
+      font-size: 11px;
+      margin-top: 8px;
+    }
+
+    @media (max-width: 1120px) {
+      .app,
+      .dashboard {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        display: none;
+      }
+
+      .cve-panel,
+      .topic-panel,
+      .news-panel {
+        grid-column: 1;
+        grid-row: auto;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .workspace { padding: 16px; }
+      .metrics,
+      .topics,
+      .cve-row {
+        grid-template-columns: 1fr;
+      }
+      .cve-row.header { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <strong>SecureWatch</strong>
+        <span>Security Operations</span>
+      </div>
+      <nav class="nav">
+        <a class="active" href="#">Dashboard</a>
+        <a href="#">CVE</a>
+        <a href="#">Security News</a>
+        <a href="#">Tanium Inventory</a>
+        <a href="#">Investigation</a>
+        <a href="#">Settings</a>
+      </nav>
+    </aside>
+
+    <section class="workspace">
+      <header class="topbar">
+        <div>
+          <h1>Security Operations</h1>
+          <p>AI가 정리한 최신 보안 흐름, CVE/KEV, 뉴스 신호를 한 화면에서 확인합니다.</p>
+        </div>
+        <span class="live">Live data</span>
+      </header>
+
+      <section class="metrics">
+        <article class="metric">
+          <label>CVE / KEV</label>
+          <strong>4146 / 1635</strong>
+          <small>최근 CVE 우선</small>
+        </article>
+        <article class="metric">
+          <label>News</label>
+          <strong>142</strong>
+          <small>News + KISA notices</small>
+        </article>
+        <article class="metric">
+          <label>Endpoints</label>
+          <strong>20</strong>
+          <small>Tanium inventory</small>
+        </article>
+        <article class="metric">
+          <label>HOT Topic</label>
+          <strong>AI</strong>
+          <small>411 mentions · 207 articles</small>
+        </article>
+      </section>
+
+      <section class="dashboard">
+        <article class="panel cve-panel">
+          <div class="panel-header">
+            <h2>CVE / KEV</h2>
+            <button class="ghost-button">전체 보기</button>
+          </div>
+          <div class="cve-table">
+            <div class="cve-row header">
+              <span>CVE</span>
+              <span>Severity</span>
+              <span>EPSS</span>
+              <span>요약 내용</span>
+            </div>
+            <div class="cve-row">
+              <span class="cve-id">CVE-2026-59705</span>
+              <span class="severity critical">CRITICAL</span>
+              <span>2.4%</span>
+              <p class="summary">인증되지 않은 API 접근 취약점으로 민감 데이터 조회 및 서비스 중단 가능성이 있어 즉시 업데이트가 필요합니다.</p>
+            </div>
+            <div class="cve-row">
+              <span class="cve-id">CVE-2026-59704</span>
+              <span class="severity high">HIGH</span>
+              <span>0.8%</span>
+              <p class="summary">소유권 검증 미흡으로 비공개 AI 메타데이터가 노출될 수 있습니다.</p>
+            </div>
+            <div class="cve-row">
+              <span class="cve-id">CVE-2026-55078</span>
+              <span class="severity medium">MEDIUM</span>
+              <span>0.2%</span>
+              <p class="summary">파일 업로드 크기 제한 우회로 메모리 사용량이 증가해 가용성 영향이 발생할 수 있습니다.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel topic-panel">
+          <div class="panel-header">
+            <h2>HOT Topic</h2>
+            <span>LLM · 30 days</span>
+          </div>
+          <p class="topic-brief">최근 30일간 AI 보안 위협, Microsoft 취약점, 랜섬웨어 이슈가 집중되었습니다.</p>
+          <div class="topics">
+            <article class="topic">
+              <strong>AI</strong>
+              <span>207 articles · 411 mentions</span>
+              <p>AI 모델/API 악용과 방어 기술이 동시에 증가하고 있습니다.</p>
+            </article>
+            <article class="topic">
+              <strong>Microsoft</strong>
+              <span>42 articles · 88 mentions</span>
+              <p>Windows 및 Microsoft 서비스 취약점 패치 동향이 중요합니다.</p>
+            </article>
+            <article class="topic">
+              <strong>랜섬웨어</strong>
+              <span>31 articles · 64 mentions</span>
+              <p>Akira 등 주요 랜섬웨어 조직 활동이 계속 관측됩니다.</p>
+            </article>
+          </div>
+        </article>
+
+        <article class="panel news-panel">
+          <div class="panel-header">
+            <h2>Security News</h2>
+            <button class="ghost-button">전체 보기</button>
+          </div>
+          <div class="news-list">
+            <article class="news-card">
+              <strong>Microsoft patches LegacyHive Windows zero-day vulnerability</strong>
+              <p>Windows 환경에서 악용 가능성이 있는 취약점이 패치되었습니다. 사내 Windows 단말의 패치 상태 확인이 필요합니다.</p>
+              <span class="meta">BleepingComputer · 2026. 8. 14.</span>
+            </article>
+            <article class="news-card">
+              <strong>New phishing campaign bypasses MFA with device trust abuse</strong>
+              <p>MFA 우회와 세션 탈취가 결합된 피싱 캠페인이 확인되어 계정 보호 정책 점검이 필요합니다.</p>
+              <span class="meta">The Hacker News · 2026. 8. 14.</span>
+            </article>
+            <article class="news-card">
+              <strong>Android malware combo takes out loans and relays credit cards</strong>
+              <p>모바일 악성코드가 금융 앱과 인증 정보를 노리는 정황이 확인되었습니다.</p>
+              <span class="meta">Security News · 2026. 8. 13.</span>
+            </article>
+            <article class="news-card">
+              <strong>OpenAI API issue highlights AI service exposure risk</strong>
+              <p>AI API 설정과 접근 제어가 보안 운영의 주요 점검 항목으로 부상하고 있습니다.</p>
+              <span class="meta">KISA / External · 2026. 8. 13.</span>
+            </article>
+          </div>
+        </article>
+      </section>
+    </section>
+  </main>
+</body>
+</html>
