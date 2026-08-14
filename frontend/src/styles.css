@@ -1533,9 +1533,11 @@ button:disabled {
 }
 
 .settings-side-nav button {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 4px;
-  justify-items: start;
+  align-items: flex-start;
+  justify-content: flex-start;
   width: 100%;
   border: 1px solid transparent;
   border-radius: 7px;
@@ -1553,15 +1555,19 @@ button:disabled {
 }
 
 .settings-side-nav strong {
+  width: 100%;
   color: inherit;
   font-size: 13px;
   line-height: 1.2;
+  text-align: left;
 }
 
 .settings-side-nav span {
+  width: 100%;
   color: #7f8d9c;
   font-size: 11px;
   line-height: 1.35;
+  text-align: left;
 }
 
 .settings-side-nav button.active span {
