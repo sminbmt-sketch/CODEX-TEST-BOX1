@@ -194,7 +194,7 @@ button:disabled {
 .dashboard-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(360px, 1fr);
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(430px, 1fr) 260px;
   gap: 14px;
 }
 
@@ -213,20 +213,20 @@ button:disabled {
 
 .cve-panel {
   grid-column: 1;
-  grid-row: 1 / span 2;
+  grid-row: 1;
 }
 
 .hot-topic-panel {
-  grid-column: 2;
-  grid-row: 1;
+  grid-column: 1;
+  grid-row: 2;
   min-height: 0;
   height: 260px;
 }
 
 .news-panel {
   grid-column: 2;
-  grid-row: 2;
-  height: clamp(360px, calc(100vh - 585px), 430px);
+  grid-row: 1 / span 2;
+  height: clamp(704px, calc(100vh - 310px), 894px);
 }
 
 .panel-header {
