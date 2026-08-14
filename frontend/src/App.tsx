@@ -1042,10 +1042,6 @@ export default function App() {
                         <span>{topic.article_count} articles · {topic.count} mentions</span>
                         {topic.description && <p>{topic.description}</p>}
                       </div>
-                      <div className="topic-score">
-                        <span>{topic.total_views.toLocaleString()}</span>
-                        <small>views</small>
-                      </div>
                     </article>
                   ))}
                   {!state.summary?.hot_topics?.length && <div className="empty block">No hot topic data</div>}

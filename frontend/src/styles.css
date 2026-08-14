@@ -376,9 +376,7 @@ button:disabled {
 
 .topic-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
-  align-items: center;
   border: 1px solid #263240;
   border-radius: 7px;
   background: #101821;
@@ -404,21 +402,9 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
-.topic-row span,
-.topic-score small {
+.topic-row span {
   color: #8b98a6;
   font-size: 11px;
-}
-
-.topic-score {
-  min-width: 56px;
-  text-align: right;
-}
-
-.topic-score span {
-  color: #91e7b5;
-  font-size: 14px;
-  font-weight: 850;
 }
 
 .brief {

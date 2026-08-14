@@ -123,6 +123,8 @@ TOPIC_STOPWORDS = {
 }
 SHORT_ALLOWED_TOPICS = {"ai", "os", "ip", "iot", "apt"}
 AUTO_EXCLUDE_MAX_PER_RUN = 12
+HOT_TOPIC_LLM_CANDIDATE_LIMIT = 16
+HOT_TOPIC_LLM_TOPIC_LIMIT = 6
 AUTO_EXCLUDE_ALLOWED_KEYS = {
     "access",
     "agent",
@@ -303,6 +305,23 @@ def _fallback_brief(topics: list[dict[str, Any]], days: int) -> str | None:
     return f"최근 {days}일 반복 노출 키워드: " + ", ".join(str(item["keyword"]) for item in topics[:5])
 
 
+def _fallback_topic_description(topic: dict[str, Any]) -> str | None:
+    title = str(topic.get("top_article_title") or "").strip()
+    if not title:
+        return None
+    return f"관련 주요 기사: {title}"
+
+
+def _ensure_topic_descriptions(topics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    output: list[dict[str, Any]] = []
+    for topic in topics:
+        item = dict(topic)
+        if not str(item.get("description") or "").strip():
+            item["description"] = _fallback_topic_description(item)
+        output.append(item)
+    return output
+
+
 def _extract_json(value: str) -> dict[str, Any]:
     text = value.strip()
     match = JSON_BLOCK_RE.search(text)
@@ -384,10 +403,9 @@ async def _llm_merge_topics(db: Session, candidates: list[dict[str, Any]], days:
             "keyword": item["keyword"],
             "count": item["count"],
             "article_count": item["article_count"],
-            "total_views": item["total_views"],
-            "top_article_title": item["top_article_title"],
+            "top_article_title": str(item["top_article_title"] or "")[:80],
         }
-        for item in candidates[:30]
+        for item in candidates[:HOT_TOPIC_LLM_CANDIDATE_LIMIT]
     ]
     system_prompt = (
         "You are a Korean security operations analyst. Return valid JSON only. "
@@ -396,14 +414,15 @@ async def _llm_merge_topics(db: Session, candidates: list[dict[str, Any]], days:
         "Representative keyword must be one of the provided candidate keyword values. "
         "Evaluate which candidate keywords are too generic for a HOT Topic and return them in excluded_keywords. "
         "Do not exclude specific products, vendors, malware family names, actor names, protocols, or concrete technologies. "
-        "Remove generic words and explain the trend in Korean. "
+        "Keep all Korean text very short to avoid truncation. "
         f"Respect max_tokens={config.max_tokens}; keep output compact."
     )
     user_prompt = (
-        f"최근 {days}일 HOT Topic 후보입니다. 같은 의미의 키워드를 병합하고 운영 관점의 짧은 한국어 설명을 작성하세요.\n"
-        "Topic으로 보기 어려운 일반 단어는 excluded_keywords에 넣으세요. 예: 위협, 해킹, 공격자, 사이버보안, threat 처럼 범위가 넓고 구체 제품/조직/기술/캠페인을 가리키지 않는 단어.\n"
-        "응답 스키마: {\"brief_ko\":\"한국어 1문장\", \"excluded_keywords\":[\"후보 keyword 값\"], \"topics\":[{\"keyword\":\"대표 키워드\", \"aliases\":[\"후보 keyword 값\"], \"description_ko\":\"한국어 1문장\"}]}\n"
-        "aliases에는 반드시 아래 후보 keyword 중 실제 병합에 사용한 값을 넣으세요. 없는 키워드는 만들지 마세요.\n\n"
+        f"최근 {days}일 HOT Topic 후보입니다. JSON만 출력하세요.\n"
+        f"topics는 최대 {min(limit, HOT_TOPIC_LLM_TOPIC_LIMIT)}개만 작성하세요. description_ko는 35자 이내 한국어 한 문장입니다.\n"
+        "excluded_keywords는 일반 단어만 최대 8개입니다. 제품/벤더/기술명은 제외하지 마세요.\n"
+        "스키마: {\"brief_ko\":\"60자 이내\", \"excluded_keywords\":[\"후보 keyword\"], \"topics\":[{\"keyword\":\"후보 keyword\", \"aliases\":[\"후보 keyword\"], \"description_ko\":\"35자 이내\"}]}\n"
+        "keyword와 aliases는 반드시 후보 keyword 중에서만 고르세요.\n"
         + json.dumps(payload, ensure_ascii=False)
     )
     content = await SummaryService(config).complete(system_prompt, user_prompt)
@@ -440,7 +459,7 @@ async def refresh_hot_topic_snapshot(db: Session, days: int = 30, limit: int = 1
     snapshot = HotTopicSnapshot(
         period_days=days,
         source=source,
-        topics=topics,
+        topics=_ensure_topic_descriptions(topics),
         candidate_topics=[{key: value for key, value in item.items() if key != "key"} for item in candidates],
         brief=brief,
         error=error,
@@ -455,9 +474,9 @@ async def refresh_hot_topic_snapshot(db: Session, days: int = 30, limit: int = 1
 def current_hot_topics(db: Session, days: int = 30, limit: int = 10) -> tuple[list[dict[str, Any]], str | None, str, datetime | None]:
     setting = get_hot_topic_setting(db)
     snapshot = db.scalar(select(HotTopicSnapshot).where(HotTopicSnapshot.period_days == days).order_by(HotTopicSnapshot.created_at.desc()).limit(1))
-    if snapshot is not None and (setting.updated_at is None or snapshot.created_at >= setting.updated_at):
+    if snapshot is not None and (setting.updated_at is None or snapshot.created_at + timedelta(seconds=5) >= setting.updated_at):
         topics = snapshot.topics if isinstance(snapshot.topics, list) else []
-        return topics[:limit], snapshot.brief, snapshot.source, snapshot.created_at
+        return _ensure_topic_descriptions(topics[:limit]), snapshot.brief, snapshot.source, snapshot.created_at
     excluded = normalize_excluded_keywords(setting.excluded_keywords if isinstance(setting.excluded_keywords, list) else [])
     topics = [{key: value for key, value in item.items() if key != "key"} for item in build_candidate_topics(db, days=days, limit=limit, excluded_keywords=excluded)]
-    return topics, _fallback_brief(topics, days), "rules", None
+    return _ensure_topic_descriptions(topics), _fallback_brief(topics, days), "rules", None
