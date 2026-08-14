@@ -61,6 +61,8 @@ TOPIC_STOPWORDS = {
     "critical",
     "cvss",
     "data",
+    "def",
+    "con",
     "exploit",
     "exploited",
     "exploitable",
@@ -120,6 +122,76 @@ TOPIC_STOPWORDS = {
     "필요합니다",
 }
 SHORT_ALLOWED_TOPICS = {"ai", "os", "ip", "iot", "apt"}
+AUTO_EXCLUDE_MAX_PER_RUN = 12
+AUTO_EXCLUDE_ALLOWED_KEYS = {
+    "access",
+    "agent",
+    "attackers",
+    "campaign",
+    "cybersecurity",
+    "exposed",
+    "hackers",
+    "malware",
+    "malicious",
+    "more",
+    "released",
+    "researchers",
+    "said",
+    "says",
+    "score",
+    "server",
+    "software",
+    "targeting",
+    "than",
+    "threat",
+    "tracked",
+    "used",
+    "개최",
+    "강화",
+    "글로벌",
+    "기술",
+    "기업",
+    "데이터",
+    "대응",
+    "미리보기",
+    "사이버",
+    "사이버보안",
+    "솔루션",
+    "시대",
+    "위한",
+    "위협",
+    "유출",
+    "인증",
+    "즉시",
+    "콘퍼런스",
+    "해킹",
+}
+AUTO_EXCLUDE_PROTECTED_KEYS = {
+    "7-zip",
+    "ai",
+    "android",
+    "apache",
+    "api",
+    "chrome",
+    "claude",
+    "def",
+    "defcon",
+    "github",
+    "ios",
+    "isec",
+    "linux",
+    "microsoft",
+    "nginx",
+    "openai",
+    "oracle",
+    "sharepoint",
+    "ssl",
+    "tls",
+    "vpn",
+    "windows",
+    "zoom",
+    "데프콘",
+}
 
 
 def normalize_keyword(value: str) -> str:
@@ -149,7 +221,7 @@ def normalize_excluded_keywords(values: list[str] | None) -> list[str]:
 def get_hot_topic_setting(db: Session) -> HotTopicSetting:
     row = db.scalar(select(HotTopicSetting).order_by(HotTopicSetting.id.asc()).limit(1))
     if row is None:
-        row = HotTopicSetting(excluded_keywords=[], llm_enabled=True)
+        row = HotTopicSetting(excluded_keywords=[], llm_enabled=True, auto_exclude_enabled=True)
         db.add(row)
         db.commit()
         db.refresh(row)
@@ -160,6 +232,7 @@ def hot_topic_setting_out(row: HotTopicSetting) -> dict[str, Any]:
     return {
         "excluded_keywords": normalize_excluded_keywords(row.excluded_keywords if isinstance(row.excluded_keywords, list) else []),
         "llm_enabled": bool(row.llm_enabled),
+        "auto_exclude_enabled": bool(row.auto_exclude_enabled),
         "updated_at": row.updated_at,
     }
 
@@ -238,14 +311,37 @@ def _extract_json(value: str) -> dict[str, Any]:
     return json.loads(text)
 
 
-def _merge_topic_rows(candidates: list[dict[str, Any]], llm_topics: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+def _validated_llm_excludes(candidates: list[dict[str, Any]], values: list[Any]) -> list[str]:
+    allowed = {str(item["key"]) for item in candidates}
+    allowed.update(normalize_keyword(str(alias)) for item in candidates for alias in item.get("aliases", []))
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        key = normalize_keyword(str(value))
+        if not key or key in seen or key not in allowed or key in SHORT_ALLOWED_TOPICS:
+            continue
+        if key in AUTO_EXCLUDE_PROTECTED_KEYS:
+            continue
+        if key not in AUTO_EXCLUDE_ALLOWED_KEYS:
+            continue
+        if len(key) < 2 or key.isdigit() or len(key) > 40:
+            continue
+        seen.add(key)
+        result.append(key)
+        if len(result) >= AUTO_EXCLUDE_MAX_PER_RUN:
+            break
+    return result
+
+
+def _merge_topic_rows(candidates: list[dict[str, Any]], llm_topics: list[dict[str, Any]], limit: int, excluded_keys: set[str] | None = None) -> list[dict[str, Any]]:
+    excluded_keys = excluded_keys or set()
     by_key = {str(item["key"]): item for item in candidates}
     used: set[str] = set()
     merged: list[dict[str, Any]] = []
     for llm_topic in llm_topics:
         aliases = [normalize_keyword(str(value)) for value in llm_topic.get("aliases", []) if str(value).strip()]
         keyword_key = normalize_keyword(str(llm_topic.get("keyword", "")))
-        keys = [key for key in [keyword_key, *aliases] if key in by_key and key not in used]
+        keys = [key for key in [keyword_key, *aliases] if key in by_key and key not in used and key not in excluded_keys]
         if not keys:
             continue
         rows = [by_key[key] for key in keys]
@@ -274,12 +370,12 @@ def _merge_topic_rows(candidates: list[dict[str, Any]], llm_topics: list[dict[st
     for row in candidates:
         if len(merged) >= limit:
             break
-        if row["key"] not in used:
+        if row["key"] not in used and row["key"] not in excluded_keys:
             merged.append({key: value for key, value in row.items() if key != "key"})
     return merged
 
 
-async def _llm_merge_topics(db: Session, candidates: list[dict[str, Any]], days: int, limit: int) -> tuple[list[dict[str, Any]], str]:
+async def _llm_merge_topics(db: Session, candidates: list[dict[str, Any]], days: int, limit: int) -> tuple[list[dict[str, Any]], str, list[str]]:
     config = resolve_llm_config(db)
     if config.provider == "disabled":
         raise RuntimeError("LLM provider disabled")
@@ -298,12 +394,15 @@ async def _llm_merge_topics(db: Session, candidates: list[dict[str, Any]], days:
         "Merge only equivalent Korean/English aliases, product aliases, or acronym variants. "
         "Do not group unrelated keywords into broad categories. Do not create new category labels. "
         "Representative keyword must be one of the provided candidate keyword values. "
+        "Evaluate which candidate keywords are too generic for a HOT Topic and return them in excluded_keywords. "
+        "Do not exclude specific products, vendors, malware family names, actor names, protocols, or concrete technologies. "
         "Remove generic words and explain the trend in Korean. "
         f"Respect max_tokens={config.max_tokens}; keep output compact."
     )
     user_prompt = (
         f"최근 {days}일 HOT Topic 후보입니다. 같은 의미의 키워드를 병합하고 운영 관점의 짧은 한국어 설명을 작성하세요.\n"
-        "응답 스키마: {\"brief_ko\":\"한국어 1문장\", \"topics\":[{\"keyword\":\"대표 키워드\", \"aliases\":[\"후보 keyword 값\"], \"description_ko\":\"한국어 1문장\"}]}\n"
+        "Topic으로 보기 어려운 일반 단어는 excluded_keywords에 넣으세요. 예: 위협, 해킹, 공격자, 사이버보안, threat 처럼 범위가 넓고 구체 제품/조직/기술/캠페인을 가리키지 않는 단어.\n"
+        "응답 스키마: {\"brief_ko\":\"한국어 1문장\", \"excluded_keywords\":[\"후보 keyword 값\"], \"topics\":[{\"keyword\":\"대표 키워드\", \"aliases\":[\"후보 keyword 값\"], \"description_ko\":\"한국어 1문장\"}]}\n"
         "aliases에는 반드시 아래 후보 keyword 중 실제 병합에 사용한 값을 넣으세요. 없는 키워드는 만들지 마세요.\n\n"
         + json.dumps(payload, ensure_ascii=False)
     )
@@ -311,9 +410,10 @@ async def _llm_merge_topics(db: Session, candidates: list[dict[str, Any]], days:
     if not content:
         raise RuntimeError("LLM returned empty response")
     data = _extract_json(content)
-    topics = _merge_topic_rows(candidates, data.get("topics", []), limit)
+    excluded_keywords = _validated_llm_excludes(candidates, data.get("excluded_keywords", []))
+    topics = _merge_topic_rows(candidates, data.get("topics", []), limit, excluded_keys=set(excluded_keywords))
     brief = str(data.get("brief_ko") or _fallback_brief(topics, days) or "").strip()
-    return topics, brief
+    return topics, brief, excluded_keywords
 
 
 async def refresh_hot_topic_snapshot(db: Session, days: int = 30, limit: int = 10) -> HotTopicSnapshot:
@@ -326,7 +426,13 @@ async def refresh_hot_topic_snapshot(db: Session, days: int = 30, limit: int = 1
     brief = _fallback_brief(topics, days)
     if candidates and setting.llm_enabled:
         try:
-            topics, brief = await _llm_merge_topics(db, candidates, days, limit)
+            topics, brief, auto_excludes = await _llm_merge_topics(db, candidates, days, limit)
+            if setting.auto_exclude_enabled and auto_excludes:
+                merged_excludes = normalize_excluded_keywords([*(excluded or []), *auto_excludes])
+                setting.excluded_keywords = merged_excludes
+                topics = [item for item in topics if normalize_keyword(str(item.get("keyword", ""))) not in set(auto_excludes)]
+                candidates = [item for item in candidates if item["key"] not in set(auto_excludes)]
+                brief = _fallback_brief(topics, days) if not topics else brief
             source = "llm"
         except Exception as exc:
             config = resolve_llm_config(db)

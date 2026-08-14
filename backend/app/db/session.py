@@ -33,6 +33,7 @@ def _ensure_schema() -> None:
     source_columns = {column["name"] for column in inspector.get_columns("sources")} if "sources" in table_names else set()
     intelligence_columns = {column["name"] for column in inspector.get_columns("news_intelligence")} if "news_intelligence" in table_names else set()
     automation_columns = {column["name"] for column in inspector.get_columns("automation_settings")} if "automation_settings" in table_names else set()
+    hot_topic_columns = {column["name"] for column in inspector.get_columns("hot_topic_settings")} if "hot_topic_settings" in table_names else set()
     with engine.begin() as connection:
         if "enabled" not in source_columns:
             connection.execute(text("ALTER TABLE sources ADD COLUMN enabled BOOLEAN DEFAULT TRUE"))
@@ -94,6 +95,8 @@ def _ensure_schema() -> None:
             connection.execute(text("ALTER TABLE automation_settings ADD COLUMN summary_days INTEGER DEFAULT 7"))
         if "automation_settings" in table_names and "summary_last_run_at" not in automation_columns:
             connection.execute(text("ALTER TABLE automation_settings ADD COLUMN summary_last_run_at TIMESTAMP WITH TIME ZONE"))
+        if "hot_topic_settings" in table_names and "auto_exclude_enabled" not in hot_topic_columns:
+            connection.execute(text("ALTER TABLE hot_topic_settings ADD COLUMN auto_exclude_enabled BOOLEAN DEFAULT TRUE"))
 
 
 def get_db() -> Generator[Session, None, None]:

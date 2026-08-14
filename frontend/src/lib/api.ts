@@ -234,6 +234,7 @@ export type AutomationSettings = {
 export type HotTopicSettings = {
   excluded_keywords: string[];
   llm_enabled: boolean;
+  auto_exclude_enabled: boolean;
   updated_at?: string | null;
 };
 

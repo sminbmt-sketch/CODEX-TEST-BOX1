@@ -434,12 +434,14 @@ class HotTopicSettingOut(BaseModel):
 
     excluded_keywords: list[str] = Field(default_factory=list)
     llm_enabled: bool = True
+    auto_exclude_enabled: bool = True
     updated_at: datetime | None = None
 
 
 class HotTopicSettingUpdate(BaseModel):
     excluded_keywords: list[str] = Field(default_factory=list, max_length=300)
     llm_enabled: bool = True
+    auto_exclude_enabled: bool = True
 
 
 class EmailSettingOut(BaseModel):

@@ -461,7 +461,7 @@ export default function App() {
     summary_run_time: "10:00",
     summary_days: 7,
   });
-  const [hotTopicForm, setHotTopicForm] = useState({ excludedKeywords: "", llmEnabled: true });
+  const [hotTopicForm, setHotTopicForm] = useState({ excludedKeywords: "", llmEnabled: true, autoExcludeEnabled: true });
   const [emailForm, setEmailForm] = useState({
     enabled: false,
     smtp_host: "",
@@ -532,6 +532,7 @@ export default function App() {
       setHotTopicForm({
         excludedKeywords: hotTopicSettings.excluded_keywords.join("\n"),
         llmEnabled: hotTopicSettings.llm_enabled,
+        autoExcludeEnabled: hotTopicSettings.auto_exclude_enabled,
       });
       setEmailForm({
         enabled: email.enabled,
@@ -631,7 +632,7 @@ export default function App() {
       .split(/[\n,]/)
       .map((value) => value.trim())
       .filter(Boolean);
-    return { excluded_keywords: keywords, llm_enabled: hotTopicForm.llmEnabled };
+    return { excluded_keywords: keywords, llm_enabled: hotTopicForm.llmEnabled, auto_exclude_enabled: hotTopicForm.autoExcludeEnabled };
   }
 
   async function saveHotTopicSettings() {
@@ -641,6 +642,7 @@ export default function App() {
       setHotTopicForm({
         excludedKeywords: updated.excluded_keywords.join("\n"),
         llmEnabled: updated.llm_enabled,
+        autoExcludeEnabled: updated.auto_exclude_enabled,
       });
     });
   }
@@ -1951,6 +1953,15 @@ export default function App() {
                     onChange={(event) => setHotTopicForm((current) => ({ ...current, llmEnabled: event.target.checked }))}
                   />
                   LLM 키워드 병합/트렌드 설명 사용
+                </label>
+                <label className="check-field">
+                  <input
+                    type="checkbox"
+                    checked={hotTopicForm.autoExcludeEnabled}
+                    onChange={(event) => setHotTopicForm((current) => ({ ...current, autoExcludeEnabled: event.target.checked }))}
+                    disabled={!hotTopicForm.llmEnabled}
+                  />
+                  LLM 일반 단어 자동 필터
                 </label>
                 <label className="wide-field">
                   제외 키워드

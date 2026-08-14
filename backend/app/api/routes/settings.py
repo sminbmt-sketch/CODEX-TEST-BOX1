@@ -232,6 +232,7 @@ def update_hot_topic_settings(payload: HotTopicSettingUpdate, db: Session = Depe
     row = get_hot_topic_setting(db)
     row.excluded_keywords = normalize_excluded_keywords(payload.excluded_keywords)
     row.llm_enabled = payload.llm_enabled
+    row.auto_exclude_enabled = payload.auto_exclude_enabled
     db.commit()
     db.refresh(row)
     return hot_topic_out(row)

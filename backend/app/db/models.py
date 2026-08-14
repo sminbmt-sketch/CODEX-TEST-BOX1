@@ -272,6 +272,7 @@ class HotTopicSetting(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     excluded_keywords: Mapped[dict | list | None] = mapped_column(JsonType)
     llm_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    auto_exclude_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
