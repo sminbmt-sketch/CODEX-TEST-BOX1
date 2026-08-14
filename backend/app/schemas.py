@@ -47,6 +47,7 @@ class ArticleOut(BaseModel):
     summary_error: str | None = None
     summary_error_detail: str | None = None
     tags: dict | list | None = None
+    view_count: int | None = None
     risk_score: float
     source: SourceOut | None = None
     created_at: datetime | None = None
@@ -134,6 +135,15 @@ class DetectionOut(BaseModel):
     endpoint: EndpointSnapshotOut
 
 
+class HotTopicItem(BaseModel):
+    keyword: str
+    count: int
+    article_count: int
+    total_views: int = 0
+    top_article_title: str | None = None
+    top_article_url: str | None = None
+
+
 class DashboardSummary(BaseModel):
     vulnerability_count: int
     kev_count: int
@@ -142,6 +152,8 @@ class DashboardSummary(BaseModel):
     detection_count: int
     top_risks: list[VulnerabilityOut]
     latest_articles: list[ArticleOut]
+    hot_topics: list[HotTopicItem] = Field(default_factory=list)
+    hot_topic_brief: str | None = None
 
 
 class CollectionResult(BaseModel):

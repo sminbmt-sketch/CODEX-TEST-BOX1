@@ -31,6 +31,10 @@ DEFAULT_HTML_SOURCES = [
 HTML_DECLARATION_RE = re.compile(r"<\?[^>]*\?>|<!doctype[^>]*>", re.IGNORECASE)
 XML_DECLARATION_RE = re.compile(r"<\?xml[^>]*\?>", re.IGNORECASE)
 BOARD_LIST_RE = re.compile(r"<!--\s*board list start\s*-->(.*?)<!--\s*board list end\s*//\s*-->", re.IGNORECASE | re.DOTALL)
+VIEW_COUNT_RE = re.compile(
+    r"(?:조회(?:수)?|view(?:\s*count)?|views?)\s*(?:[:：=]|</?[^>]+>|\s)\s*([0-9][0-9,\.]*)",
+    re.IGNORECASE,
+)
 KRCERT_LIST_PATH = "/kr/bbs/list.do"
 KRCERT_SECURITY_NOTICE_PARAMS = {"menuNo": "205020", "bbsId": "B0000133"}
 
@@ -260,6 +264,40 @@ def _with_page_index(url: str, page_index: int) -> str:
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
 
 
+def _extract_view_count(text: str) -> int | None:
+    candidates: list[int] = []
+    compact = " ".join(text.split())
+    for match in VIEW_COUNT_RE.finditer(compact):
+        raw = match.group(1).replace(",", "").replace(".", "")
+        try:
+            value = int(raw)
+        except ValueError:
+            continue
+        if 0 <= value <= 100_000_000:
+            candidates.append(value)
+    return max(candidates) if candidates else None
+
+
+def _should_fetch_metrics(url: str) -> bool:
+    parsed = urlparse(url)
+    return parsed.netloc.endswith("boannews.com")
+
+
+async def _read_article_view_count(client: httpx.AsyncClient, url: str) -> int | None:
+    if not _should_fetch_metrics(url):
+        return None
+    try:
+        response = await client.get(url)
+        response.raise_for_status()
+    except Exception:
+        return None
+    encoding = response.encoding or "utf-8"
+    if "boannews.com" in str(response.url):
+        encoding = "euc-kr"
+    body = response.content.decode(encoding, errors="replace")
+    return _extract_view_count(body)
+
+
 def _configured_sources(db: Session, defaults: list[tuple[str, str, str]]) -> list[tuple[str, str, str]]:
     for name, url, kind in defaults:
         deleted = db.scalar(select(AuditLog.id).where(AuditLog.action == "source_deleted", AuditLog.target == name))
@@ -314,6 +352,9 @@ async def collect_rss_feeds(db: Session, feeds: list[tuple[str, str, str]] | Non
                 article.raw_excerpt = description[:1000] if description else None
                 article.published_at = published
                 article.tags = []
+                view_count = await _read_article_view_count(client, link)
+                if view_count is not None:
+                    article.view_count = view_count
                 changed += 1
 
         for name, url, kind in html_sources:
@@ -348,6 +389,9 @@ async def collect_rss_feeds(db: Session, feeds: list[tuple[str, str, str]] | Non
                         article.raw_excerpt = None
                         article.published_at = datetime.combine(published_date, datetime.min.time()) if published_date else None
                         article.tags = [{"row_num": row_num}]
+                        view_count = await _read_article_view_count(client, link)
+                        if view_count is not None:
+                            article.view_count = view_count
                         changed += 1
                     if stop_paging or len(seen) >= 100:
                         break
@@ -373,6 +417,9 @@ async def collect_rss_feeds(db: Session, feeds: list[tuple[str, str, str]] | Non
                 article.title = title[:500]
                 article.raw_excerpt = None
                 article.tags = []
+                view_count = await _read_article_view_count(client, link)
+                if view_count is not None:
+                    article.view_count = view_count
                 changed += 1
                 if len(seen) >= 50:
                     break

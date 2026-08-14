@@ -56,6 +56,8 @@ def _ensure_schema() -> None:
             connection.execute(text("ALTER TABLE articles ADD COLUMN summary_error VARCHAR(64)"))
         if "summary_error_detail" not in article_columns:
             connection.execute(text("ALTER TABLE articles ADD COLUMN summary_error_detail TEXT"))
+        if "view_count" not in article_columns:
+            connection.execute(text("ALTER TABLE articles ADD COLUMN view_count INTEGER"))
         if "mac_address" not in endpoint_columns:
             connection.execute(text("ALTER TABLE endpoint_snapshots ADD COLUMN mac_address VARCHAR(64)"))
         if "platform" not in endpoint_columns:

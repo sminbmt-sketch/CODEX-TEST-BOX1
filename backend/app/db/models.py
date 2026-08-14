@@ -40,6 +40,7 @@ class Article(Base):
     summary_error_detail: Mapped[str | None] = mapped_column(Text)
     raw_excerpt: Mapped[str | None] = mapped_column(Text)
     tags: Mapped[dict | list | None] = mapped_column(JsonType)
+    view_count: Mapped[int | None] = mapped_column(Integer, index=True)
     risk_score: Mapped[float] = mapped_column(Float, default=0.0, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

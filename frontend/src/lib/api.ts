@@ -84,6 +84,15 @@ export type DashboardSummary = {
   detection_count: number;
   top_risks: Vulnerability[];
   latest_articles: Article[];
+  hot_topics: {
+    keyword: string;
+    count: number;
+    article_count: number;
+    total_views: number;
+    top_article_title?: string | null;
+    top_article_url?: string | null;
+  }[];
+  hot_topic_brief?: string | null;
 };
 
 export type EndpointSnapshot = {

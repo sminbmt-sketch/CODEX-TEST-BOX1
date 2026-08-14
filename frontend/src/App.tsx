@@ -890,18 +890,18 @@ export default function App() {
 
   const metrics = useMemo(() => {
     const summary = state.summary;
+    const topTopic = summary?.hot_topics?.[0];
     return [
       { label: "CVE / KEV", value: `${summary?.vulnerability_count ?? 0} / ${summary?.kev_count ?? 0}` },
       { label: "News", value: summary?.article_count ?? 0 },
       { label: "Endpoints", value: summary?.endpoint_count ?? 0 },
-      { label: "Detections", value: summary?.detection_count ?? 0 },
       {
-        label: "Tanium",
-        value: state.tanium?.configured ? "Online" : "Missing",
-        sub: state.tanium?.configured ? "Gateway/API 정상" : "연결 설정 필요",
+        label: "HOT Topic",
+        value: topTopic?.keyword || "-",
+        sub: topTopic ? `${topTopic.count} mentions · ${topTopic.article_count} articles` : "최근 30일 데이터 부족",
       },
     ];
-  }, [state.summary, state.tanium]);
+  }, [state.summary]);
 
   const newsSources = state.sources.filter((source) => source.kind !== "vulnerability");
   const sensorUpdatedValues = state.taniumSensors
@@ -990,6 +990,29 @@ export default function App() {
                     </div>
                   ))}
                   {!dashboardCves.length && <div className="empty block">No vulnerability data</div>}
+                </div>
+              </article>
+
+              <article className="panel hot-topic-panel">
+                <div className="panel-header">
+                  <h2>HOT Topic</h2>
+                  <span className="pill neutral">30 days</span>
+                </div>
+                {state.summary?.hot_topic_brief && <p className="topic-brief">{state.summary.hot_topic_brief}</p>}
+                <div className="topic-list">
+                  {(state.summary?.hot_topics || []).slice(0, 10).map((topic) => (
+                    <article className="topic-row" key={topic.keyword}>
+                      <div>
+                        <strong>{topic.keyword}</strong>
+                        <span>{topic.article_count} articles · {topic.count} mentions</span>
+                      </div>
+                      <div className="topic-score">
+                        <span>{topic.total_views.toLocaleString()}</span>
+                        <small>views</small>
+                      </div>
+                    </article>
+                  ))}
+                  {!state.summary?.hot_topics?.length && <div className="empty block">No hot topic data</div>}
                 </div>
               </article>
 
