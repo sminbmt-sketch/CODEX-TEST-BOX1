@@ -4,6 +4,19 @@ import { api, type Article, type AutomationSettings, type CollectionJobStatus, t
 
 type Route = "dashboard" | "cves" | "security-news" | "email" | "tanium-inventory" | "investigation" | "reports" | "logs" | "settings";
 type InvestigationTargetType = "news" | "kisa" | "cve" | "email";
+type SettingsSection =
+  | "quick-actions"
+  | "tanium-sensors"
+  | "hot-topic"
+  | "data-management"
+  | "automatic-summaries"
+  | "automatic-updates"
+  | "email-delivery"
+  | "epss-status"
+  | "news-sources"
+  | "nvd-year"
+  | "llm-provider"
+  | "summaries";
 
 type LoadState = {
   summary?: DashboardSummary;
@@ -56,6 +69,21 @@ const navItems: { route: Route; label: string }[] = [
   { route: "reports", label: "Reports" },
   { route: "logs", label: "Logs" },
   { route: "settings", label: "Settings" },
+];
+
+const settingsSections: { id: SettingsSection; label: string; description: string }[] = [
+  { id: "quick-actions", label: "Quick Actions", description: "수집, 요약, Tanium 동기화 실행" },
+  { id: "tanium-sensors", label: "Tanium Sensor Catalog", description: "LLM 조사용 Sensor 목록 상태" },
+  { id: "hot-topic", label: "HOT Topic Filter", description: "키워드 필터와 LLM 병합 설정" },
+  { id: "data-management", label: "Data Management", description: "수집 데이터 삭제" },
+  { id: "automatic-summaries", label: "Automatic Summaries", description: "LLM 자동 요약 스케줄" },
+  { id: "automatic-updates", label: "Automatic Updates", description: "CVE/News 자동 수집 스케줄" },
+  { id: "email-delivery", label: "Email Delivery", description: "SMTP 전송 모듈 설정" },
+  { id: "epss-status", label: "EPSS Status", description: "FIRST EPSS 업데이트 상태" },
+  { id: "news-sources", label: "News Sources", description: "뉴스 수집 링크 관리" },
+  { id: "nvd-year", label: "NVD Year Feed", description: "연도별 NVD CVE feed 수집" },
+  { id: "llm-provider", label: "LLM Provider", description: "LLM 제공자와 모델 설정" },
+  { id: "summaries", label: "Summaries", description: "수동 CVE/News 요약 실행" },
 ];
 
 const pageSizeOptions = [10, 30, 50, 100];
@@ -484,6 +512,7 @@ export default function App() {
   });
   const [llmMessage, setLlmMessage] = useState<string | undefined>();
   const [llmModels, setLlmModels] = useState<string[]>([]);
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("quick-actions");
   const [inventoryDetail, setInventoryDetail] = useState<{ endpoint: EndpointSnapshot; type: "software" | "processes" | "etc" } | null>(null);
   const [, setReadVersion] = useState(0);
   const investigationResultRef = useRef<HTMLElement | null>(null);
@@ -1875,42 +1904,66 @@ export default function App() {
           <section>
             <div className="sticky-list-header settings-sticky-header">
               <PageTitle title="Settings" description="수집 주기, LLM 모델, Tanium 연결 설정을 관리하는 영역입니다." />
-              <div className="toolbar settings-top-actions">
-                <button title="Refresh dashboard" onClick={() => void load()} disabled={state.loading}>
-                  <RefreshCw size={16} />
-                  <span>Refresh</span>
-                </button>
-                <button title="Collect new CVEs from NVD CVE-Recent feed, then queue FIRST EPSS automatically" onClick={() => void runLatestCveUpdate()} disabled={Boolean(state.action)}>
-                  <DatabaseZap size={16} />
-                  <span>최신 CVE Update</span>
-                </button>
-                <button title="Collect security news for the configured date range" onClick={() => void runNewsUpdate()} disabled={Boolean(state.action)}>
-                  <FileText size={16} />
-                  <span>News</span>
-                </button>
-                <button title="Translate and summarize using the configured summary period" onClick={() => void runSummariesUpdate()} disabled={Boolean(state.action)}>
-                  <FileText size={16} />
-                  <span>Summarize</span>
-                </button>
-                <button title="Sync Tanium endpoint inventory" onClick={() => void runAction("Endpoint sync", api.taniumSyncEndpoints)} disabled={Boolean(state.action)}>
-                  <Server size={16} />
-                  <span>Endpoints</span>
-                </button>
-                <button title="Analyze CVE impact against Tanium inventory" onClick={() => void runAction("Impact analysis", api.taniumAnalyzeImpact)} disabled={Boolean(state.action)}>
-                  <Radar size={16} />
-                  <span>Analyze</span>
-                </button>
-                <button title="Run read-only Gateway test" onClick={() => void runAction("Tanium test", api.taniumTest)} disabled={Boolean(state.action)}>
-                  <Wifi size={16} />
-                  <span>Test Gateway</span>
-                </button>
-                <button title="Sync Tanium Sensor catalog for LLM investigation planning" onClick={() => void runAction("Sensor catalog", api.taniumSyncSensors)} disabled={Boolean(state.action)}>
-                  <ListChecks size={16} />
-                  <span>Sensors</span>
-                </button>
-              </div>
             </div>
-            <article className="page-card settings-card">
+            <div className="settings-layout">
+              <aside className="settings-side-nav" aria-label="Settings sections">
+                {settingsSections.map((section) => (
+                  <button
+                    key={section.id}
+                    type="button"
+                    className={settingsSection === section.id ? "active" : undefined}
+                    onClick={() => setSettingsSection(section.id)}
+                  >
+                    <strong>{section.label}</strong>
+                    <span>{section.description}</span>
+                  </button>
+                ))}
+              </aside>
+              <div className="settings-content-panel">
+                <article className="page-card settings-card" hidden={settingsSection !== "quick-actions"}>
+                  <header>
+                    <div>
+                      <h3>Quick Actions</h3>
+                      <p>자주 실행하는 수집, 요약, Tanium 동기화 작업을 한 곳에서 실행합니다.</p>
+                    </div>
+                    <span className="pill neutral">Actions</span>
+                  </header>
+                  <div className="toolbar settings-action-grid">
+                    <button title="Refresh dashboard" onClick={() => void load()} disabled={state.loading}>
+                      <RefreshCw size={16} />
+                      <span>Refresh</span>
+                    </button>
+                    <button title="Collect new CVEs from NVD CVE-Recent feed, then queue FIRST EPSS automatically" onClick={() => void runLatestCveUpdate()} disabled={Boolean(state.action)}>
+                      <DatabaseZap size={16} />
+                      <span>최신 CVE Update</span>
+                    </button>
+                    <button title="Collect security news for the configured date range" onClick={() => void runNewsUpdate()} disabled={Boolean(state.action)}>
+                      <FileText size={16} />
+                      <span>News</span>
+                    </button>
+                    <button title="Translate and summarize using the configured summary period" onClick={() => void runSummariesUpdate()} disabled={Boolean(state.action)}>
+                      <FileText size={16} />
+                      <span>Summarize</span>
+                    </button>
+                    <button title="Sync Tanium endpoint inventory" onClick={() => void runAction("Endpoint sync", api.taniumSyncEndpoints)} disabled={Boolean(state.action)}>
+                      <Server size={16} />
+                      <span>Endpoints</span>
+                    </button>
+                    <button title="Analyze CVE impact against Tanium inventory" onClick={() => void runAction("Impact analysis", api.taniumAnalyzeImpact)} disabled={Boolean(state.action)}>
+                      <Radar size={16} />
+                      <span>Analyze</span>
+                    </button>
+                    <button title="Run read-only Gateway test" onClick={() => void runAction("Tanium test", api.taniumTest)} disabled={Boolean(state.action)}>
+                      <Wifi size={16} />
+                      <span>Test Gateway</span>
+                    </button>
+                    <button title="Sync Tanium Sensor catalog for LLM investigation planning" onClick={() => void runAction("Sensor catalog", api.taniumSyncSensors)} disabled={Boolean(state.action)}>
+                      <ListChecks size={16} />
+                      <span>Sensors</span>
+                    </button>
+                  </div>
+                </article>
+            <article className="page-card settings-card" hidden={settingsSection !== "tanium-sensors"}>
               <header>
                 <div>
                   <h3>Tanium Sensor Catalog</h3>
@@ -1933,7 +1986,7 @@ export default function App() {
                 </div>
               </div>
             </article>
-            <article className="page-card settings-card">
+            <article className="page-card settings-card" hidden={settingsSection !== "hot-topic"}>
               <header>
                 <div>
                   <h3>HOT Topic Filter</h3>
@@ -1984,7 +2037,7 @@ export default function App() {
                 <span>Updated: {formatDate(state.summary?.hot_topic_updated_at)}</span>
               </div>
             </article>
-            <article className="page-card settings-card data-management-card">
+            <article className="page-card settings-card data-management-card" hidden={settingsSection !== "data-management"}>
               <header>
                 <div>
                   <h3>Data Management</h3>
@@ -2015,7 +2068,7 @@ export default function App() {
                 <span>부분: CVE, Security News, Tanium Inventory만 삭제</span>
               </div>
             </article>
-            <article className="page-card settings-card">
+            <article className="page-card settings-card" hidden={settingsSection !== "automatic-summaries"}>
               <header>
                 <div>
                   <h3>Automatic Summaries</h3>
@@ -2079,7 +2132,7 @@ export default function App() {
                 <span>요약 기간: {automationForm.summary_days} days</span>
               </div>
             </article>
-            <article className="page-card settings-card">
+            <article className="page-card settings-card" hidden={settingsSection !== "automatic-updates"}>
               <header>
                 <div>
                   <h3>Automatic Updates</h3>
@@ -2190,7 +2243,7 @@ export default function App() {
                 <span>News 수집 기간: {automationForm.collection_days} days</span>
               </div>
             </article>
-            <article className="page-card settings-card">
+            <article className="page-card settings-card" hidden={settingsSection !== "email-delivery"}>
               <header>
                 <div>
                   <h3>Email Delivery</h3>
@@ -2264,7 +2317,7 @@ export default function App() {
                 <span>Recipients: {emailForm.recipients || "-"}</span>
               </div>
             </article>
-            <article className="page-card settings-card">
+            <article className="page-card settings-card" hidden={settingsSection !== "epss-status"}>
               <header>
                 <div>
                   <h3>EPSS Status</h3>
@@ -2283,7 +2336,7 @@ export default function App() {
                 {state.epssJob?.error && <strong>{state.epssJob.error}</strong>}
               </div>
             </article>
-            <div className="source-settings-grid">
+            <div className="source-settings-grid" hidden={settingsSection !== "news-sources"}>
               <SourceSettingsCard
                 title="News Sources"
                 description="Security News와 KISA 보안공지 수집에 사용하는 링크입니다."
@@ -2313,7 +2366,7 @@ export default function App() {
                 </div>
               </SourceSettingsCard>
             </div>
-            <article className="page-card settings-card">
+            <article className="page-card settings-card" hidden={settingsSection !== "nvd-year"}>
               <header>
                 <div>
                   <h3>NVD Year Feed</h3>
@@ -2363,7 +2416,7 @@ export default function App() {
                 {state.nvdYearJob?.error && <strong>{state.nvdYearJob.error}</strong>}
               </div>
             </article>
-            <article className="page-card settings-card">
+            <article className="page-card settings-card" hidden={settingsSection !== "llm-provider"}>
               <header>
                 <div>
                   <h3>LLM Provider</h3>
@@ -2473,7 +2526,7 @@ export default function App() {
                 {llmMessage && <strong>{llmMessage}</strong>}
               </div>
             </article>
-            <article className="page-card settings-card">
+            <article className="page-card settings-card" hidden={settingsSection !== "summaries"}>
               <header>
                 <div>
                   <h3>Summaries</h3>
@@ -2520,6 +2573,8 @@ export default function App() {
                 <span>최근 {summaryDays}일 기준</span>
               </div>
             </article>
+              </div>
+            </div>
           </section>
         )}
       </section>
