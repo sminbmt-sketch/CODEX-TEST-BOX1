@@ -273,6 +273,23 @@ button:disabled {
   scrollbar-width: thin;
 }
 
+.dashboard-cve-table .cve-row {
+  align-items: start;
+}
+
+.dashboard-cve-table .cve-row:not(.header) {
+  min-height: 98px;
+}
+
+.dashboard-cve-table .cve-row span:last-child {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-height: 1.45;
+  white-space: normal;
+}
+
 .cve-row {
   position: relative;
   display: grid;
