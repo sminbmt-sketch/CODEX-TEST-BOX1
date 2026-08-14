@@ -1,6 +1,6 @@
 # SecureWatch MVP Project Memory
 
-Last updated: 2026-07-03
+Last updated: 2026-08-14
 
 ## Fixed Rules
 
@@ -118,6 +118,7 @@ Build a Web + Dashboard system that collects security news and vulnerability dat
 - 2026-07-07: LLM summary prompts now request the agreed structured JSON shape (`content`, `entities`, `iocs`) and extract `content.summary` for the current summary field. Article and CVE APIs expose `summary_status`; CVE and Security News cards show LLM/Fallback/No LLM badges.
 - 2026-07-07: Added NVD JSON 2.0 yearly feed support. Settings includes an `NVD JSON Feeds` source with `https://nvd.nist.gov/vuln/data-feeds#divJson20Feeds`, plus an `NVD Year Feed` control that imports `nvdcve-2.0-{year}.json.gz` for years 2002 through the current year. Existing recent CVE Update still uses the NVD CVE API.
 - 2026-07-07: Settings top title/action area is sticky during scroll. NVD Year Feed now supports a minimum and maximum year range; backend accepts `start_year` and `end_year` and imports each yearly feed in the selected range.
+- 2026-08-14: HOT Topic phase 2 direction is rules-first keyword extraction with stopword/exclude filters, followed by optional LLM keyword merge and Korean trend explanation cached as a dashboard snapshot. Settings must allow managing HOT Topic excluded keywords and regenerating the snapshot.
 - 2026-07-07: NVD Year Feed import now runs as a backend background job instead of a blocking HTTP request. The previous synchronous import could appear to do nothing for large ranges like 2025-2026 because the yearly feeds download/parse/upsert slowly and only commit after the request completes. Settings displays job status, current year, fetched count, updated count, and error details via `/api/collect/nvd/year/status`.
 - 2026-07-08: Settings CVE collection is split into `NVD Year Feed` for full yearly JSON feed imports and `최신 CVE Update` for the NVD `nvdcve-2.0-recent.json.gz` feed. The latest CVE update skips CVE IDs that already exist in the database, so it acts as a lightweight incremental collector instead of reprocessing duplicates.
 - 2026-07-08: Settings source management no longer exposes CVE/NVD source cards; only `News Sources` is shown for editable source links. Deleting a source now removes the source row instead of disabling it, clears existing articles' `source_id`, and records a deletion audit entry so default news sources are not recreated on the next `/settings/sources` load.

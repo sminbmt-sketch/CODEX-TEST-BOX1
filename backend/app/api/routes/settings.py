@@ -3,7 +3,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
-from app.db.models import Article, AuditLog, AutomationSetting, Detection, EmailSetting, EndpointSnapshot, IntelligenceEntity, IntelligenceIoc, InvestigationRun, LlmSetting, NewsIntelligence, Source, Vulnerability
+from app.db.models import Article, AuditLog, AutomationSetting, Detection, EmailSetting, EndpointSnapshot, HotTopicSetting, HotTopicSnapshot, IntelligenceEntity, IntelligenceIoc, InvestigationRun, LlmSetting, NewsIntelligence, Source, Vulnerability
 from app.db.session import get_db
 from app.schemas import (
     AutomationSettingOut,
@@ -11,6 +11,8 @@ from app.schemas import (
     DataResetResult,
     EmailSettingOut,
     EmailSettingUpdate,
+    HotTopicSettingOut,
+    HotTopicSettingUpdate,
     LlmSettingOut,
     LlmSettingUpdate,
     LlmModelList,
@@ -19,6 +21,7 @@ from app.schemas import (
     SourceOut,
     SourceUpdate,
 )
+from app.services.hot_topics import get_hot_topic_setting, hot_topic_setting_out, normalize_excluded_keywords
 from app.services.news_sources import DEFAULT_HTML_SOURCES, DEFAULT_NEWS_FEEDS
 from app.services.llm import LlmRuntimeConfig, SummaryService, default_base_url, default_model, get_llm_setting, ollama_root_url, resolve_llm_config, sanitize_llm_error
 from app.services.vulnerability_sources import CISA_KEV_URL, EPSS_URL, NVD_CVE_URL, NVD_DATA_FEEDS_URL
@@ -153,6 +156,10 @@ def get_email_row(db: Session) -> EmailSetting:
     return row
 
 
+def hot_topic_out(row: HotTopicSetting) -> HotTopicSettingOut:
+    return HotTopicSettingOut(**hot_topic_setting_out(row))
+
+
 def email_out(row: EmailSetting) -> EmailSettingOut:
     return EmailSettingOut(
         enabled=row.enabled,
@@ -213,6 +220,21 @@ def update_automation_settings(payload: AutomationSettingUpdate, db: Session = D
     db.commit()
     db.refresh(row)
     return AutomationSettingOut.model_validate(row)
+
+
+@router.get("/hot-topics", response_model=HotTopicSettingOut)
+def get_hot_topic_settings(db: Session = Depends(get_db)) -> HotTopicSettingOut:
+    return hot_topic_out(get_hot_topic_setting(db))
+
+
+@router.put("/hot-topics", response_model=HotTopicSettingOut)
+def update_hot_topic_settings(payload: HotTopicSettingUpdate, db: Session = Depends(get_db)) -> HotTopicSettingOut:
+    row = get_hot_topic_setting(db)
+    row.excluded_keywords = normalize_excluded_keywords(payload.excluded_keywords)
+    row.llm_enabled = payload.llm_enabled
+    db.commit()
+    db.refresh(row)
+    return hot_topic_out(row)
 
 
 @router.get("/email", response_model=EmailSettingOut)
@@ -347,6 +369,7 @@ def reset_data(target: str, db: Session = Depends(get_db)) -> DataResetResult:
         deleted["detections"] = _delete_count(db, delete(Detection))
         deleted["vulnerabilities"] = _delete_count(db, delete(Vulnerability))
     if target in {"all", "news"}:
+        deleted["hot_topic_snapshots"] = _delete_count(db, delete(HotTopicSnapshot))
         deleted["articles"] = _delete_count(db, delete(Article))
     if target in {"all", "inventory"}:
         if target == "inventory":

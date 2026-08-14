@@ -396,6 +396,14 @@ button:disabled {
   font-size: 13px;
 }
 
+.topic-row p {
+  color: #8f9dab;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
 .topic-row span,
 .topic-score small {
   color: #8b98a6;
@@ -1482,6 +1490,11 @@ button:disabled {
   grid-template-columns: minmax(180px, 240px) minmax(220px, 1fr) auto;
 }
 
+.hot-topic-settings-form {
+  grid-template-columns: minmax(220px, 280px) minmax(280px, 1fr) auto;
+  align-items: end;
+}
+
 .nvd-year-form {
   grid-template-columns: minmax(140px, 200px) minmax(140px, 200px) auto;
   align-items: end;
@@ -1540,7 +1553,8 @@ button:disabled {
 }
 
 .settings-form input,
-.settings-form select {
+.settings-form select,
+.settings-form textarea {
   min-width: 0;
   min-height: 36px;
   border: 1px solid #334355;
@@ -1549,6 +1563,12 @@ button:disabled {
   color: #d9e3ec;
   font: inherit;
   padding: 0 10px;
+}
+
+.settings-form textarea {
+  min-height: 92px;
+  padding: 10px;
+  resize: vertical;
 }
 
 .check-field {

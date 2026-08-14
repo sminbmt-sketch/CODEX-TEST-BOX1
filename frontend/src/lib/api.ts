@@ -91,8 +91,12 @@ export type DashboardSummary = {
     total_views: number;
     top_article_title?: string | null;
     top_article_url?: string | null;
+    aliases?: string[];
+    description?: string | null;
   }[];
   hot_topic_brief?: string | null;
+  hot_topic_source?: string | null;
+  hot_topic_updated_at?: string | null;
 };
 
 export type EndpointSnapshot = {
@@ -224,6 +228,12 @@ export type AutomationSettings = {
   summary_run_time: string;
   summary_days: number;
   summary_last_run_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type HotTopicSettings = {
+  excluded_keywords: string[];
+  llm_enabled: boolean;
   updated_at?: string | null;
 };
 
@@ -411,6 +421,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   summary: () => request<DashboardSummary>("/api/dashboard/summary"),
+  refreshHotTopics: () => request<DashboardSummary>("/api/dashboard/hot-topics/refresh", { method: "POST" }),
   vulnerabilities: (params?: ListParams) => request<Vulnerability[]>(`/api/vulnerabilities${listQuery(params ?? { limit: 25 })}`),
   vulnerabilityCount: (params?: ListParams) => request<number>(`/api/vulnerabilities/count${listQuery(params)}`),
   articles: (params?: ListParams) => request<Article[]>(`/api/articles${listQuery(params ?? { limit: 25 })}`),
@@ -427,6 +438,9 @@ export const api = {
   automationSettings: () => request<AutomationSettings>("/api/settings/automation"),
   updateAutomationSettings: (payload: AutomationSettings) =>
     request<AutomationSettings>("/api/settings/automation", { method: "PUT", body: JSON.stringify(payload) }),
+  hotTopicSettings: () => request<HotTopicSettings>("/api/settings/hot-topics"),
+  updateHotTopicSettings: (payload: HotTopicSettings) =>
+    request<HotTopicSettings>("/api/settings/hot-topics", { method: "PUT", body: JSON.stringify(payload) }),
   emailSettings: () => request<EmailSettings>("/api/settings/email"),
   updateEmailSettings: (payload: EmailSettingsUpdate) =>
     request<EmailSettings>("/api/settings/email", { method: "PUT", body: JSON.stringify(payload) }),

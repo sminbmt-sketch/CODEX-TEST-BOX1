@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.db.models import Vulnerability
 from app.db.session import SessionLocal, get_db
 from app.schemas import CollectionJobStatus, CollectionResult
+from app.services.hot_topics import refresh_hot_topic_snapshot
 from app.services.news_sources import collect_rss_feeds
 from app.services.vulnerability_sources import collect_cisa_kev, collect_nvd_recent_feed, collect_nvd_year_feed, collect_recent_nvd, update_epss_scores
 
@@ -295,6 +296,7 @@ async def run_news_collection(
 ) -> CollectionResult:
     try:
         fetched, changed = await collect_rss_feeds(db, days=days)
+        await refresh_hot_topic_snapshot(db)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"News collection failed: {exc}") from exc
     return CollectionResult(source="RSS feeds", fetched=fetched, created_or_updated=changed)

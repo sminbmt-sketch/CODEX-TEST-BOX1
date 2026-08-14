@@ -142,6 +142,8 @@ class HotTopicItem(BaseModel):
     total_views: int = 0
     top_article_title: str | None = None
     top_article_url: str | None = None
+    aliases: list[str] = Field(default_factory=list)
+    description: str | None = None
 
 
 class DashboardSummary(BaseModel):
@@ -154,6 +156,8 @@ class DashboardSummary(BaseModel):
     latest_articles: list[ArticleOut]
     hot_topics: list[HotTopicItem] = Field(default_factory=list)
     hot_topic_brief: str | None = None
+    hot_topic_source: str | None = None
+    hot_topic_updated_at: datetime | None = None
 
 
 class CollectionResult(BaseModel):
@@ -423,6 +427,19 @@ class AutomationSettingUpdate(BaseModel):
     summary_news_enabled: bool = True
     summary_run_time: str = Field(default="10:00", pattern=r"^\d{2}:\d{2}$")
     summary_days: int = Field(default=7, ge=1, le=365)
+
+
+class HotTopicSettingOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    excluded_keywords: list[str] = Field(default_factory=list)
+    llm_enabled: bool = True
+    updated_at: datetime | None = None
+
+
+class HotTopicSettingUpdate(BaseModel):
+    excluded_keywords: list[str] = Field(default_factory=list, max_length=300)
+    llm_enabled: bool = True
 
 
 class EmailSettingOut(BaseModel):

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import AutomationSetting, AuditLog, Vulnerability
 from app.db.session import SessionLocal
+from app.services.hot_topics import refresh_hot_topic_snapshot
 from app.services.news_sources import collect_rss_feeds
 from app.services.tanium_inventory import sync_endpoint_inventory
 from app.services.llm import summarize_recent_articles, summarize_recent_vulnerabilities
@@ -115,6 +116,8 @@ async def run_automation_once(db: Session, setting: AutomationSetting) -> dict[s
         fetched, updated = await collect_rss_feeds(db, days=setting.collection_days)
         result["news_fetched"] = fetched
         result["news_updated"] = updated
+        snapshot = await refresh_hot_topic_snapshot(db)
+        result["hot_topic_updated"] = 1 if snapshot.id else 0
     setting.last_run_at = datetime.now(timezone.utc)
     db.add(AuditLog(action="automation_run", target="schedule", detail=result))
     db.commit()

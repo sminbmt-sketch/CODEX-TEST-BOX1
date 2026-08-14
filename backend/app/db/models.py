@@ -266,6 +266,28 @@ class AutomationSetting(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class HotTopicSetting(Base):
+    __tablename__ = "hot_topic_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    excluded_keywords: Mapped[dict | list | None] = mapped_column(JsonType)
+    llm_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class HotTopicSnapshot(Base):
+    __tablename__ = "hot_topic_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    period_days: Mapped[int] = mapped_column(Integer, default=30, index=True)
+    source: Mapped[str] = mapped_column(String(32), default="rules", index=True)
+    topics: Mapped[dict | list | None] = mapped_column(JsonType)
+    candidate_topics: Mapped[dict | list | None] = mapped_column(JsonType)
+    brief: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
 class EmailSetting(Base):
     __tablename__ = "email_settings"
 

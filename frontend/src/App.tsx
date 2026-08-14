@@ -1,6 +1,6 @@
 import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarClock, DatabaseZap, ExternalLink, FileText, ListChecks, Mail, Plus, Radar, RefreshCw, Search, Server, Trash2, Wifi } from "lucide-react";
-import { api, type Article, type AutomationSettings, type CollectionJobStatus, type DashboardSummary, type DataResetTarget, type Detection, type EmailMessage, type EmailSettings, type EndpointSnapshot, type InvestigationRun, type LlmProvider, type LlmSettings, type Source, type SummaryLogItem, type TaniumSensor, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
+import { api, type Article, type AutomationSettings, type CollectionJobStatus, type DashboardSummary, type DataResetTarget, type Detection, type EmailMessage, type EmailSettings, type EndpointSnapshot, type HotTopicSettings, type InvestigationRun, type LlmProvider, type LlmSettings, type Source, type SummaryLogItem, type TaniumSensor, type TaniumStatus, type TrendReport, type Vulnerability } from "./lib/api";
 
 type Route = "dashboard" | "cves" | "security-news" | "email" | "tanium-inventory" | "investigation" | "reports" | "logs" | "settings";
 type InvestigationTargetType = "news" | "kisa" | "cve" | "email";
@@ -21,6 +21,7 @@ type LoadState = {
   taniumSensors: TaniumSensor[];
   llm?: LlmSettings;
   automation?: AutomationSettings;
+  hotTopicSettings?: HotTopicSettings;
   email?: EmailSettings;
   nvdYearJob?: CollectionJobStatus;
   epssJob?: CollectionJobStatus;
@@ -460,6 +461,7 @@ export default function App() {
     summary_run_time: "10:00",
     summary_days: 7,
   });
+  const [hotTopicForm, setHotTopicForm] = useState({ excludedKeywords: "", llmEnabled: true });
   const [emailForm, setEmailForm] = useState({
     enabled: false,
     smtp_host: "",
@@ -492,7 +494,7 @@ export default function App() {
       const cveParams = { limit: cvePageSize, offset: (cvePage - 1) * cvePageSize, q: cveSearch.trim() || undefined, sort: cveSort, severity: cveSeverity || undefined };
       const newsParams = { limit: newsPageSize, offset: (newsPage - 1) * newsPageSize, q: newsSearch.trim() || undefined, sort: newsSort, category: newsCategory };
       const emailParams = { limit: emailPageSize, offset: (emailPage - 1) * emailPageSize, q: emailSearch.trim() || undefined, sender: emailSender.trim() || undefined, sort: emailSort };
-      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, emails, emailTotal, tanium, inventory, detections, trends, llm, automation, email, sources, nvdYearJob, epssJob, summaryLogs, taniumSensors] = await Promise.all([
+      const [summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, emails, emailTotal, tanium, inventory, detections, trends, llm, automation, hotTopicSettings, email, sources, nvdYearJob, epssJob, summaryLogs, taniumSensors] = await Promise.all([
         api.summary(),
         api.vulnerabilities(cveParams),
         api.vulnerabilityCount(cveParams),
@@ -506,6 +508,7 @@ export default function App() {
         api.trends(),
         api.llmSettings(),
         api.automationSettings(),
+        api.hotTopicSettings(),
         api.emailSettings(),
         api.sources(),
         api.nvdYearStatus(),
@@ -513,7 +516,7 @@ export default function App() {
         api.summaryFailureLogs(),
         api.taniumSensors(),
       ]);
-      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, emails, emailTotal, tanium, inventory, detections, trends, llm, automation, email, nvdYearJob, epssJob, sources, summaryLogs, taniumSensors, loading: false });
+      setState({ summary, vulnerabilities, vulnerabilityTotal, articles, articleTotal, emails, emailTotal, tanium, inventory, detections, trends, llm, automation, hotTopicSettings, email, nvdYearJob, epssJob, sources, summaryLogs, taniumSensors, loading: false });
       setSourceDrafts(Object.fromEntries(sources.map((source) => [source.id, { name: source.name, kind: source.kind, url: source.url || "", enabled: source.enabled }])));
       setLlmForm((current) => ({
         ...current,
@@ -526,6 +529,10 @@ export default function App() {
         maxTokens: llm.max_tokens,
       }));
       setAutomationForm(automation);
+      setHotTopicForm({
+        excludedKeywords: hotTopicSettings.excluded_keywords.join("\n"),
+        llmEnabled: hotTopicSettings.llm_enabled,
+      });
       setEmailForm({
         enabled: email.enabled,
         smtp_host: email.smtp_host || "",
@@ -616,6 +623,32 @@ export default function App() {
     await runAction("Save automation", async () => {
       const updated = await api.updateAutomationSettings(automationForm);
       setState((current) => ({ ...current, automation: updated }));
+    });
+  }
+
+  function hotTopicKeywordsPayload() {
+    const keywords = hotTopicForm.excludedKeywords
+      .split(/[\n,]/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    return { excluded_keywords: keywords, llm_enabled: hotTopicForm.llmEnabled };
+  }
+
+  async function saveHotTopicSettings() {
+    await runAction("Save HOT Topic settings", async () => {
+      const updated = await api.updateHotTopicSettings(hotTopicKeywordsPayload());
+      setState((current) => ({ ...current, hotTopicSettings: updated }));
+      setHotTopicForm({
+        excludedKeywords: updated.excluded_keywords.join("\n"),
+        llmEnabled: updated.llm_enabled,
+      });
+    });
+  }
+
+  async function refreshHotTopics() {
+    await runAction("Refresh HOT Topic", async () => {
+      const summary = await api.refreshHotTopics();
+      setState((current) => ({ ...current, summary }));
     });
   }
 
@@ -996,7 +1029,7 @@ export default function App() {
               <article className="panel hot-topic-panel">
                 <div className="panel-header">
                   <h2>HOT Topic</h2>
-                  <span className="pill neutral">30 days</span>
+                  <span className="pill neutral">{state.summary?.hot_topic_source === "llm" ? "LLM · 30 days" : "30 days"}</span>
                 </div>
                 {state.summary?.hot_topic_brief && <p className="topic-brief">{state.summary.hot_topic_brief}</p>}
                 <div className="topic-list">
@@ -1005,6 +1038,7 @@ export default function App() {
                       <div>
                         <strong>{topic.keyword}</strong>
                         <span>{topic.article_count} articles · {topic.count} mentions</span>
+                        {topic.description && <p>{topic.description}</p>}
                       </div>
                       <div className="topic-score">
                         <span>{topic.total_views.toLocaleString()}</span>
@@ -1899,6 +1933,48 @@ export default function App() {
                   <span>마지막 업데이트</span>
                   <strong>{formatDate(sensorLastUpdated)}</strong>
                 </div>
+              </div>
+            </article>
+            <article className="page-card settings-card">
+              <header>
+                <div>
+                  <h3>HOT Topic Filter</h3>
+                  <p>Dashboard HOT Topic에서 제외할 일반 단어를 관리하고, LLM 기반 키워드 병합/트렌드 설명을 재생성합니다.</p>
+                </div>
+                <span className={hotTopicForm.llmEnabled ? "pill ok" : "pill neutral"}>{hotTopicForm.llmEnabled ? "LLM merge" : "Rules only"}</span>
+              </header>
+              <div className="settings-form hot-topic-settings-form">
+                <label className="check-field">
+                  <input
+                    type="checkbox"
+                    checked={hotTopicForm.llmEnabled}
+                    onChange={(event) => setHotTopicForm((current) => ({ ...current, llmEnabled: event.target.checked }))}
+                  />
+                  LLM 키워드 병합/트렌드 설명 사용
+                </label>
+                <label className="wide-field">
+                  제외 키워드
+                  <textarea
+                    value={hotTopicForm.excludedKeywords}
+                    placeholder={"예: CVE\n보안\n취약점\n공격"}
+                    onChange={(event) => setHotTopicForm((current) => ({ ...current, excludedKeywords: event.target.value }))}
+                  />
+                </label>
+                <div className="settings-actions">
+                  <button title="Save HOT Topic exclude filter" onClick={() => void saveHotTopicSettings()} disabled={Boolean(state.action)}>
+                    <DatabaseZap size={16} />
+                    <span>Save Filter</span>
+                  </button>
+                  <button title="Regenerate HOT Topic snapshot" onClick={() => void refreshHotTopics()} disabled={Boolean(state.action)}>
+                    <RefreshCw size={16} />
+                    <span>Refresh HOT Topic</span>
+                  </button>
+                </div>
+              </div>
+              <div className="settings-note">
+                <span>Excluded: {hotTopicKeywordsPayload().excluded_keywords.length}</span>
+                <span>Dashboard source: {state.summary?.hot_topic_source || "rules"}</span>
+                <span>Updated: {formatDate(state.summary?.hot_topic_updated_at)}</span>
               </div>
             </article>
             <article className="page-card settings-card data-management-card">
