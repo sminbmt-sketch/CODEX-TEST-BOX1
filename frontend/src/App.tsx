@@ -5,7 +5,6 @@ import { api, type Article, type AutomationSettings, type CollectionJobStatus, t
 type Route = "dashboard" | "cves" | "security-news" | "email" | "tanium-inventory" | "investigation" | "reports" | "logs" | "settings";
 type InvestigationTargetType = "news" | "kisa" | "cve" | "email";
 type SettingsSection =
-  | "quick-actions"
   | "tanium-sensors"
   | "hot-topic"
   | "data-management"
@@ -72,7 +71,6 @@ const navItems: { route: Route; label: string }[] = [
 ];
 
 const settingsSections: { id: SettingsSection; label: string; description: string }[] = [
-  { id: "quick-actions", label: "Quick Actions", description: "수집, 요약, Tanium 동기화 실행" },
   { id: "tanium-sensors", label: "Tanium Sensor Catalog", description: "LLM 조사용 Sensor 목록 상태" },
   { id: "hot-topic", label: "HOT Topic Filter", description: "키워드 필터와 LLM 병합 설정" },
   { id: "data-management", label: "Data Management", description: "수집 데이터 삭제" },
@@ -512,7 +510,7 @@ export default function App() {
   });
   const [llmMessage, setLlmMessage] = useState<string | undefined>();
   const [llmModels, setLlmModels] = useState<string[]>([]);
-  const [settingsSection, setSettingsSection] = useState<SettingsSection>("quick-actions");
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("tanium-sensors");
   const [inventoryDetail, setInventoryDetail] = useState<{ endpoint: EndpointSnapshot; type: "software" | "processes" | "etc" } | null>(null);
   const [, setReadVersion] = useState(0);
   const investigationResultRef = useRef<HTMLElement | null>(null);
@@ -1904,6 +1902,40 @@ export default function App() {
           <section>
             <div className="sticky-list-header settings-sticky-header">
               <PageTitle title="Settings" description="수집 주기, LLM 모델, Tanium 연결 설정을 관리하는 영역입니다." />
+              <div className="toolbar settings-top-actions">
+                <button title="Refresh dashboard" onClick={() => void load()} disabled={state.loading}>
+                  <RefreshCw size={16} />
+                  <span>Refresh</span>
+                </button>
+                <button title="Collect new CVEs from NVD CVE-Recent feed, then queue FIRST EPSS automatically" onClick={() => void runLatestCveUpdate()} disabled={Boolean(state.action)}>
+                  <DatabaseZap size={16} />
+                  <span>최신 CVE Update</span>
+                </button>
+                <button title="Collect security news for the configured date range" onClick={() => void runNewsUpdate()} disabled={Boolean(state.action)}>
+                  <FileText size={16} />
+                  <span>News</span>
+                </button>
+                <button title="Translate and summarize using the configured summary period" onClick={() => void runSummariesUpdate()} disabled={Boolean(state.action)}>
+                  <FileText size={16} />
+                  <span>Summarize</span>
+                </button>
+                <button title="Sync Tanium endpoint inventory" onClick={() => void runAction("Endpoint sync", api.taniumSyncEndpoints)} disabled={Boolean(state.action)}>
+                  <Server size={16} />
+                  <span>Endpoints</span>
+                </button>
+                <button title="Analyze CVE impact against Tanium inventory" onClick={() => void runAction("Impact analysis", api.taniumAnalyzeImpact)} disabled={Boolean(state.action)}>
+                  <Radar size={16} />
+                  <span>Analyze</span>
+                </button>
+                <button title="Run read-only Gateway test" onClick={() => void runAction("Tanium test", api.taniumTest)} disabled={Boolean(state.action)}>
+                  <Wifi size={16} />
+                  <span>Test Gateway</span>
+                </button>
+                <button title="Sync Tanium Sensor catalog for LLM investigation planning" onClick={() => void runAction("Sensor catalog", api.taniumSyncSensors)} disabled={Boolean(state.action)}>
+                  <ListChecks size={16} />
+                  <span>Sensors</span>
+                </button>
+              </div>
             </div>
             <div className="settings-layout">
               <aside className="settings-side-nav" aria-label="Settings sections">
@@ -1920,49 +1952,6 @@ export default function App() {
                 ))}
               </aside>
               <div className="settings-content-panel">
-                <article className="page-card settings-card" hidden={settingsSection !== "quick-actions"}>
-                  <header>
-                    <div>
-                      <h3>Quick Actions</h3>
-                      <p>자주 실행하는 수집, 요약, Tanium 동기화 작업을 한 곳에서 실행합니다.</p>
-                    </div>
-                    <span className="pill neutral">Actions</span>
-                  </header>
-                  <div className="toolbar settings-action-grid">
-                    <button title="Refresh dashboard" onClick={() => void load()} disabled={state.loading}>
-                      <RefreshCw size={16} />
-                      <span>Refresh</span>
-                    </button>
-                    <button title="Collect new CVEs from NVD CVE-Recent feed, then queue FIRST EPSS automatically" onClick={() => void runLatestCveUpdate()} disabled={Boolean(state.action)}>
-                      <DatabaseZap size={16} />
-                      <span>최신 CVE Update</span>
-                    </button>
-                    <button title="Collect security news for the configured date range" onClick={() => void runNewsUpdate()} disabled={Boolean(state.action)}>
-                      <FileText size={16} />
-                      <span>News</span>
-                    </button>
-                    <button title="Translate and summarize using the configured summary period" onClick={() => void runSummariesUpdate()} disabled={Boolean(state.action)}>
-                      <FileText size={16} />
-                      <span>Summarize</span>
-                    </button>
-                    <button title="Sync Tanium endpoint inventory" onClick={() => void runAction("Endpoint sync", api.taniumSyncEndpoints)} disabled={Boolean(state.action)}>
-                      <Server size={16} />
-                      <span>Endpoints</span>
-                    </button>
-                    <button title="Analyze CVE impact against Tanium inventory" onClick={() => void runAction("Impact analysis", api.taniumAnalyzeImpact)} disabled={Boolean(state.action)}>
-                      <Radar size={16} />
-                      <span>Analyze</span>
-                    </button>
-                    <button title="Run read-only Gateway test" onClick={() => void runAction("Tanium test", api.taniumTest)} disabled={Boolean(state.action)}>
-                      <Wifi size={16} />
-                      <span>Test Gateway</span>
-                    </button>
-                    <button title="Sync Tanium Sensor catalog for LLM investigation planning" onClick={() => void runAction("Sensor catalog", api.taniumSyncSensors)} disabled={Boolean(state.action)}>
-                      <ListChecks size={16} />
-                      <span>Sensors</span>
-                    </button>
-                  </div>
-                </article>
             <article className="page-card settings-card" hidden={settingsSection !== "tanium-sensors"}>
               <header>
                 <div>

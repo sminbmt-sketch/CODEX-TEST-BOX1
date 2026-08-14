@@ -998,6 +998,10 @@ button:disabled {
   padding: 0 14px 14px;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -1477,8 +1481,16 @@ button:disabled {
 }
 
 .hot-topic-settings-form {
-  grid-template-columns: minmax(220px, 280px) minmax(280px, 1fr) auto;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
   align-items: end;
+}
+
+.hot-topic-settings-form .wide-field {
+  grid-column: 1 / -1;
+}
+
+.hot-topic-settings-form .settings-actions {
+  grid-column: 1 / -1;
 }
 
 .nvd-year-form {
@@ -1523,6 +1535,7 @@ button:disabled {
 .settings-side-nav button {
   display: grid;
   gap: 4px;
+  justify-items: start;
   width: 100%;
   border: 1px solid transparent;
   border-radius: 7px;
