@@ -1,6 +1,6 @@
 # SecureWatch MVP Project Memory
 
-Last updated: 2026-08-14
+Last updated: 2026-08-18
 
 ## Fixed Rules
 
@@ -163,3 +163,4 @@ Build a Web + Dashboard system that collects security news and vulnerability dat
 - 2026-08-06: Added a Tanium Sensor Catalog foundation for LLM-driven investigations. Backend stores `tanium_sensors`, syncs available sensors through Tanium REST when possible, seeds core read-only sensors as fallback, exposes `/api/tanium/sensors` and `/api/tanium/sync-sensors`, and passes relevant candidate sensors into Investigation LLM planning. LLMs may propose `sensor_query_plan` entries using exact catalog sensor names, but execution remains backend-validated read-only for now so the design can later evolve toward LLM-directed Tanium queries without removing the safety layer.
 - 2026-08-07: Settings Sensor Catalog card now shows only the synced sensor count and latest catalog update time, not the full sensor list. Added separate Automatic Summaries settings for background LLM summarization of newly collected CVE and Security News items: enable/disable, CVE toggle, News toggle, recent-day window, and daily summary run time. The scheduler summarizes only items that have not already succeeded with `summary_status=llm`.
 - 2026-08-14: Dashboard HOT Topic was added. The top metric row now shows CVE/KEV, News, Endpoints, and HOT Topic, removing the Detections and Tanium metric cards. HOT Topic uses recent 30-day article title/summary/excerpt token frequency with stopword filtering and article/view aggregation. Article `view_count` is stored when source pages expose a parseable view count during initial/news button/automatic news collection, currently optimized for Boannews-style source pages while retaining generic view-count parsing.
+- 2026-08-18: CVE and Security News pagination now scrolls the page back to the top after `이전` or `다음` navigation so operators do not stay at the previous page's lower scroll position.

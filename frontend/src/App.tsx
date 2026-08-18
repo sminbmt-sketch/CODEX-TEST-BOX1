@@ -423,6 +423,12 @@ function summaryErrorAction(error?: string | null) {
   return "해당 항목을 개별 재요약하고 필요 시 LLM 설정을 확인합니다.";
 }
 
+function scrollToListPageTop() {
+  window.requestAnimationFrame(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+}
+
 export default function App() {
   const [state, setState] = useState<LoadState>(emptyState);
   const [route, setRoute] = useState<Route>(() => routeFromHash());
@@ -1160,6 +1166,7 @@ export default function App() {
                   pageSize={cvePageSize}
                   total={state.vulnerabilityTotal}
                   onPageChange={setCvePage}
+                  onAfterPageChange={scrollToListPageTop}
                   onPageSizeChange={(value) => {
                     setCvePageSize(value);
                     setCvePage(1);
@@ -1323,6 +1330,7 @@ export default function App() {
                   pageSize={newsPageSize}
                   total={state.articleTotal}
                   onPageChange={setNewsPage}
+                  onAfterPageChange={scrollToListPageTop}
                   onPageSizeChange={(value) => {
                     setNewsPageSize(value);
                     setNewsPage(1);
@@ -2914,17 +2922,24 @@ function Pager({
   pageSize,
   total,
   onPageChange,
+  onAfterPageChange,
   onPageSizeChange,
 }: {
   page: number;
   pageSize: number;
   total: number;
   onPageChange: (value: number) => void;
+  onAfterPageChange?: () => void;
   onPageSizeChange: (value: number) => void;
 }) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const end = Math.min(total, page * pageSize);
+  const changePage = (nextPage: number) => {
+    if (nextPage === page) return;
+    onPageChange(nextPage);
+    onAfterPageChange?.();
+  };
 
   return (
     <div className="pager">
@@ -2941,10 +2956,10 @@ function Pager({
       <span>
         {start}-{end} / {total}
       </span>
-      <button type="button" onClick={() => onPageChange(Math.max(1, page - 1))} disabled={page <= 1}>
+      <button type="button" onClick={() => changePage(Math.max(1, page - 1))} disabled={page <= 1}>
         이전
       </button>
-      <button type="button" onClick={() => onPageChange(Math.min(totalPages, page + 1))} disabled={page >= totalPages}>
+      <button type="button" onClick={() => changePage(Math.min(totalPages, page + 1))} disabled={page >= totalPages}>
         다음
       </button>
     </div>
